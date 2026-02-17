@@ -28,30 +28,22 @@ class ROP_Compat_Barn2
             return '';
         }
 
-        $html = '';
+        $previous_product = $GLOBALS['product'] ?? null;
+        $GLOBALS['product'] = $product;
 
-        if (shortcode_exists('product_options')) {
-            $html = do_shortcode('[product_options id="' . $product_id . '"]');
-        }
+        ob_start();
+        do_action('woocommerce_before_add_to_cart_form');
+        do_action('woocommerce_before_add_to_cart_button');
+        do_action('woocommerce_before_add_to_cart_quantity');
+        do_action('woocommerce_after_add_to_cart_quantity');
+        do_action('woocommerce_after_add_to_cart_button');
+        do_action('woocommerce_after_add_to_cart_form');
+        $html = ob_get_clean();
 
-        if (trim((string) $html) === '' && shortcode_exists('wc_product_options')) {
-            $html = do_shortcode('[wc_product_options id="' . $product_id . '"]');
-        }
-
-        if (trim((string) $html) === '') {
-            $previous_product = $GLOBALS['product'] ?? null;
-            $GLOBALS['product'] = $product;
-
-            ob_start();
-            do_action('woocommerce_before_add_to_cart_button');
-            do_action('woocommerce_after_add_to_cart_button');
-            $html = ob_get_clean();
-
-            if ($previous_product) {
-                $GLOBALS['product'] = $previous_product;
-            } else {
-                unset($GLOBALS['product']);
-            }
+        if ($previous_product) {
+            $GLOBALS['product'] = $previous_product;
+        } else {
+            unset($GLOBALS['product']);
         }
 
         return is_string($html) ? $html : '';
@@ -73,19 +65,26 @@ class ROP_Compat_Barn2
         $clean = [];
 
         foreach ($raw as $key => $value) {
-            $clean_key = sanitize_text_field((string) $key);
+            if (is_array($value) && isset($value['name'])) {
+                $clean_key = sanitize_text_field((string) $value['name']);
+                $raw_value = $value['value'] ?? '';
+            } else {
+                $clean_key = sanitize_text_field((string) $key);
+                $raw_value = $value;
+            }
+
             if ($clean_key === '') {
                 continue;
             }
 
-            if (is_array($value)) {
+            if (is_array($raw_value)) {
                 $clean[$clean_key] = array_values(array_map(static function ($v) {
                     return sanitize_text_field((string) $v);
-                }, $value));
+                }, $raw_value));
                 continue;
             }
 
-            $clean[$clean_key] = sanitize_text_field((string) $value);
+            $clean[$clean_key] = sanitize_text_field((string) $raw_value);
         }
 
         return $clean;

@@ -331,7 +331,7 @@ class ROP_Ajax
         $short_description = trim(wp_strip_all_tags((string) $product->get_short_description()));
         $description = trim(wp_strip_all_tags((string) $product->get_description()));
 
-        $barn2_html = ROP_Compat_Barn2::render_options_html($product_id);
+        $barn2_html = ROP_Compat_Barn2::is_active() ? ROP_Compat_Barn2::render_options_html($product_id) : '';
 
         $is_variable = $product->is_type('variable');
         $variable_attributes = [];
@@ -494,7 +494,19 @@ class ROP_Ajax
             }
         }
 
-        $extras = ROP_Compat_Barn2::parse_posted_options($_POST['extras'] ?? []);
+        $extras_json = wp_unslash($_POST['extras'] ?? '');
+        $extras_arr = [];
+
+        if (is_string($extras_json) && $extras_json !== '') {
+            $decoded_extras = json_decode($extras_json, true);
+            if (is_array($decoded_extras)) {
+                $extras_arr = $decoded_extras;
+            }
+        } elseif (is_array($_POST['extras'] ?? null)) {
+            $extras_arr = $_POST['extras'];
+        }
+
+        $extras = ROP_Compat_Barn2::parse_posted_options($extras_arr);
 
         $result = self::add_product_to_cart($product_id, $qty, $variation_id, $attributes, $extras);
 

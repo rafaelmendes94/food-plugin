@@ -168,3 +168,10 @@ body.rop-delivery-page footer:not(.rop-app footer) {
 [data-rop-app='1'] #product-screen i[data-lucide="heart"] {
     display: none !important;
 }
+
+
+/* v1.4.5 heart removal safeguard */
+.rop-app #product-screen i[data-lucide="heart"],
+.rop-app #product-screen button:has(i[data-lucide="heart"]) {
+    display: none !important;
+}
