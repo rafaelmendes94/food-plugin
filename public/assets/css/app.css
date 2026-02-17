@@ -160,3 +160,11 @@ body.rop-delivery-page footer:not(.rop-app footer) {
 [data-rop-app='1'].rop-ready-product #product-screen {
     visibility: visible;
 }
+
+
+.rop-app #product-screen button:has(i[data-lucide="heart"]),
+[data-rop-app='1'] #product-screen button:has(i[data-lucide="heart"]),
+.rop-app #product-screen i[data-lucide="heart"],
+[data-rop-app='1'] #product-screen i[data-lucide="heart"] {
+    display: none !important;
+}

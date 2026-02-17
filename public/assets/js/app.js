@@ -48,6 +48,15 @@
         return (div.textContent || div.innerText || '').trim();
     }
 
+    function ropQS(selectors, scope) {
+        const root = scope || document;
+        for (const sel of selectors) {
+            const el = root.querySelector(sel);
+            if (el) return el;
+        }
+        return null;
+    }
+
     function getAppRoot() {
         return document.querySelector('.rop-app[data-rop-app="1"]');
     }
@@ -775,107 +784,159 @@
         }
     }
 
+    function setProductMetaPrice(productScreen, product, variation) {
+        const metaRow = ropQS([
+            '#product-screen .mb-5 .flex.items-center.gap-3.mt-2',
+            '#product-screen .mb-5 .flex',
+        ], productScreen);
+
+        if (!metaRow) return;
+
+        let priceSpan = metaRow.querySelector('[data-rop-price]');
+        if (!priceSpan) {
+            priceSpan = document.createElement('span');
+            priceSpan.setAttribute('data-rop-price', '1');
+            priceSpan.className = 'text-gray-400 text-xs font-medium';
+            metaRow.appendChild(priceSpan);
+        }
+
+        const variationText = variation
+            ? (stripTags(variation.price_html || '') || formatBRL(variation.price || 0))
+            : '';
+        const text = variationText || product.formatted_price || stripTags(product.price_html || '') || 'R$ 0,00';
+        priceSpan.textContent = '— ' + text;
+    }
+
+    function renderVariationSelectors(container, product, appRoot, productScreen) {
+        (product.variable_attributes || []).forEach(function (attr) {
+            const row = document.createElement('div');
+            row.className = 'bg-gray-50 border border-gray-100 rounded-2xl p-3';
+
+            const label = document.createElement('label');
+            label.className = 'text-xs font-bold text-gray-500 uppercase tracking-wide block mb-2';
+            label.textContent = attr.name || attr.slug || 'Opção';
+
+            const select = document.createElement('select');
+            select.className = 'custom-input';
+            select.style.paddingLeft = '16px';
+            select.setAttribute('data-attr', attr.slug || '');
+
+            const empty = document.createElement('option');
+            empty.value = '';
+            empty.textContent = 'Selecione';
+            select.appendChild(empty);
+
+            (attr.options || []).forEach(function (opt) {
+                const option = document.createElement('option');
+                option.value = opt.slug || '';
+                option.textContent = opt.name || opt.slug || '';
+                select.appendChild(option);
+            });
+
+            select.onchange = function () {
+                const attrs = {};
+                container.querySelectorAll('select[data-attr]').forEach(function (s) {
+                    const key = s.getAttribute('data-attr');
+                    const val = s.value || '';
+                    if (key && val) attrs[key] = val;
+                });
+
+                state.selectedAttributes = attrs;
+                const match = findMatchingVariation(product, attrs);
+                const cta = getProductCta(appRoot);
+
+                if (match) {
+                    state.selectedVariationId = Number(match.variation_id || 0);
+                    setProductMetaPrice(productScreen, product, match);
+                    if (cta) {
+                        cta.disabled = false;
+                        cta.textContent = 'Finalizar Pedido';
+                    }
+                } else {
+                    state.selectedVariationId = 0;
+                    if (cta) {
+                        cta.disabled = true;
+                        cta.textContent = 'Selecione opções';
+                    }
+                }
+            };
+
+            row.appendChild(label);
+            row.appendChild(select);
+            container.appendChild(row);
+        });
+    }
+
     function renderProductScreen(appRoot, product) {
         const productScreen = getProductScreen(appRoot);
         if (!productScreen) return;
 
-        const image = productScreen.querySelector('.product-image-container img');
-        if (image && product.image) {
-            image.src = product.image;
-            image.alt = product.name || image.alt;
+        productScreen.querySelectorAll('button i[data-lucide="heart"]').forEach(function (icon) {
+            const button = icon.closest('button');
+            if (button) button.remove();
+        });
+
+        const image = ropQS([
+            '#product-screen .product-image-container img',
+            '#product-screen img',
+        ], productScreen);
+        if (image) {
+            image.src = product.image || image.src;
+            image.alt = product.name || image.alt || 'Produto';
         }
 
-        const title = productScreen.querySelector('h2');
-        if (title) title.textContent = product.name || 'Produto';
+        const title = ropQS([
+            '#product-screen h2',
+            '#product-screen .p-6 h2',
+        ], productScreen);
+        if (title) title.textContent = product.name || '';
 
-        const description = productScreen.querySelector('p.text-gray-500');
-        if (description) description.innerText = product.short_description || product.description || 'Sem descrição disponível.';
+        const descText = String(product.short_description || product.description || '').trim();
+        let description = ropQS([
+            '#product-screen p.text-gray-500',
+            '#product-screen .p-6 p',
+        ], productScreen);
 
-        const ratingText = productScreen.querySelector('.text-gray-800.text-sm.font-bold');
-        if (ratingText && typeof product.rating !== 'undefined') {
-            const ratingValue = Number(product.rating || 0).toFixed(1);
-            ratingText.textContent = ratingValue;
-        }
-
-        const ratingRow = productScreen.querySelector('.flex.items-center.gap-3.mt-2');
-        if (ratingRow) {
-            const spans = ratingRow.querySelectorAll('span');
-            if (spans.length) {
-                spans[spans.length - 1].textContent = '— Preço: ' + (product.formatted_price || formatBRL(product.price));
+        if (!description) {
+            const contentWrap = ropQS(['#product-screen .p-6.pb-44', '#product-screen .p-6'], productScreen);
+            if (contentWrap) {
+                description = document.createElement('p');
+                description.className = 'text-gray-500 text-sm md:text-base leading-relaxed mb-8';
+                const mb5 = contentWrap.querySelector('.mb-5');
+                if (mb5 && mb5.nextSibling) {
+                    contentWrap.insertBefore(description, mb5.nextSibling);
+                } else {
+                    contentWrap.appendChild(description);
+                }
             }
         }
 
-        const extrasContainer = getExtrasContainer(appRoot);
+        if (description) {
+            description.textContent = descText || ' ';
+            description.style.display = 'block';
+        }
+
+        setProductMetaPrice(productScreen, product, null);
+
+        const extrasContainer = ropQS([
+            '#product-screen h3 + .space-y-4',
+            '#product-screen .mb-8 .space-y-4',
+        ], productScreen);
+
         state.selectedVariationId = 0;
         state.selectedAttributes = {};
+
         if (extrasContainer) {
             extrasContainer.innerHTML = '';
 
             if (product.is_variable && Array.isArray(product.variable_attributes) && product.variable_attributes.length) {
-                product.variable_attributes.forEach(function (attr) {
-                    const row = document.createElement('div');
-                    row.className = 'bg-gray-50 border border-gray-100 rounded-2xl p-3';
+                renderVariationSelectors(extrasContainer, product, appRoot, productScreen);
+            }
 
-                    const label = document.createElement('label');
-                    label.className = 'text-xs font-bold text-gray-500 uppercase tracking-wide block mb-2';
-                    label.textContent = attr.name || attr.slug;
-
-                    const select = document.createElement('select');
-                    select.className = 'w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700';
-                    select.setAttribute('data-attr', attr.slug || '');
-
-                    const empty = document.createElement('option');
-                    empty.value = '';
-                    empty.textContent = 'Selecione';
-                    select.appendChild(empty);
-
-                    (attr.options || []).forEach(function (opt) {
-                        const o = document.createElement('option');
-                        o.value = opt.slug || '';
-                        o.textContent = opt.name || opt.slug || '';
-                        select.appendChild(o);
-                    });
-
-                    select.addEventListener('change', function () {
-                        const attrs = {};
-                        extrasContainer.querySelectorAll('select[data-attr]').forEach(function (s) {
-                            const key = s.getAttribute('data-attr');
-                            const val = s.value || '';
-                            if (key && val) attrs[key] = val;
-                        });
-
-                        state.selectedAttributes = attrs;
-                        const match = findMatchingVariation(product, attrs);
-                        const cta = getProductCta(appRoot);
-
-                        if (match) {
-                            state.selectedVariationId = Number(match.variation_id || 0);
-                            if (ratingRow) {
-                                const spans = ratingRow.querySelectorAll('span');
-                                if (spans.length) {
-                                    const ptxt = stripTags(match.price_html || '') || formatBRL(match.price);
-                                    spans[spans.length - 1].textContent = '— Preço: ' + ptxt;
-                                }
-                            }
-                            if (cta) {
-                                cta.disabled = false;
-                                cta.textContent = 'Finalizar Pedido';
-                            }
-                        } else {
-                            state.selectedVariationId = 0;
-                            if (cta) {
-                                cta.disabled = true;
-                                cta.textContent = 'Selecione opções';
-                            }
-                        }
-                    });
-
-                    row.appendChild(label);
-                    row.appendChild(select);
-                    extrasContainer.appendChild(row);
-                });
-            } else if (product.barn2_html) {
-                extrasContainer.innerHTML = product.barn2_html;
+            if (product.barn2_html) {
+                const wrap = document.createElement('div');
+                wrap.innerHTML = product.barn2_html;
+                extrasContainer.appendChild(wrap);
             }
         }
 
@@ -883,6 +944,7 @@
         updateProductQtyUI(appRoot);
         bindProductScreenControls(appRoot);
         refreshCartSummary(appRoot);
+
         const cta = getProductCta(appRoot);
         if (cta && product.is_variable) {
             cta.disabled = true;
@@ -917,8 +979,10 @@
                 ? (response.data.product || response.data)
                 : null;
 
-            if (!product) {
-                throw new Error('Falha ao carregar produto');
+            if (!product || !product.id) {
+                console.error('ROP product payload inválido', response);
+                appRoot.classList.add('rop-ready-product');
+                return;
             }
 
             state.currentProduct = product;

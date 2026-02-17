@@ -328,8 +328,8 @@ class ROP_Ajax
 
         $card_data = ROP_Woo::get_product_card_data($product);
 
-        $short_description = wp_strip_all_tags((string) $product->get_short_description());
-        $description = $short_description ?: wp_strip_all_tags((string) $product->get_description());
+        $short_description = trim(wp_strip_all_tags((string) $product->get_short_description()));
+        $description = trim(wp_strip_all_tags((string) $product->get_description()));
 
         $barn2_html = ROP_Compat_Barn2::render_options_html($product_id);
 
@@ -396,7 +396,7 @@ class ROP_Ajax
             'id' => (int) $product_id,
             'type' => sanitize_text_field($product->get_type()),
             'name' => wp_strip_all_tags($product->get_name()),
-            'description' => $description,
+            'description' => $short_description ?: $description,
             'short_description' => $short_description,
             'formatted_price' => wp_strip_all_tags(wc_price((float) $product->get_price())),
             'price' => (float) $product->get_price(),
@@ -416,9 +416,9 @@ class ROP_Ajax
             'barn2_html' => wp_kses_post($barn2_html),
         ];
 
-        wp_send_json_success(array_merge($payload, [
+        wp_send_json_success([
             'product' => $payload,
-        ]));
+        ]);
     }
 
     public static function get_cart_summary()
