@@ -392,7 +392,7 @@ class ROP_Ajax
             }
         }
 
-        wp_send_json_success([
+        $payload = [
             'id' => (int) $product_id,
             'type' => sanitize_text_field($product->get_type()),
             'name' => wp_strip_all_tags($product->get_name()),
@@ -414,7 +414,11 @@ class ROP_Ajax
             'variations' => $variations,
             'has_addons' => ROP_Compat_Barn2::is_active() && trim($barn2_html) !== '',
             'barn2_html' => wp_kses_post($barn2_html),
-        ]);
+        ];
+
+        wp_send_json_success(array_merge($payload, [
+            'product' => $payload,
+        ]));
     }
 
     public static function get_cart_summary()
@@ -533,13 +537,23 @@ class ROP_Ajax
             $cart_item_data['rop_barn2_key'] = md5(wp_json_encode($extras));
         }
 
+        $original_post = $_POST;
+        $posted_extras = [];
+
+        if (! empty($extras) && ROP_Compat_Barn2::is_active()) {
+            $posted_extras = ROP_Compat_Barn2::build_post_from_extras($extras);
+            $_POST = array_merge($_POST, $posted_extras);
+        }
+
         if ($product->is_type('variable')) {
             if (! $variation_id || empty($variation)) {
+                $_POST = $original_post;
                 return ['success' => false, 'status' => 400, 'message' => 'Selecione opções.', 'data' => []];
             }
 
             $variation_product = wc_get_product($variation_id);
             if (! $variation_product || (int) $variation_product->get_parent_id() !== (int) $product_id || ! $variation_product->is_in_stock()) {
+                $_POST = $original_post;
                 return ['success' => false, 'status' => 400, 'message' => 'Variação inválida.', 'data' => []];
             }
 
@@ -547,8 +561,11 @@ class ROP_Ajax
         } elseif ($product->is_type('simple')) {
             $added = WC()->cart->add_to_cart($product_id, $qty, 0, [], $cart_item_data);
         } else {
+            $_POST = $original_post;
             return ['success' => false, 'status' => 400, 'message' => 'Este item exige seleção de opções.', 'data' => []];
         }
+
+        $_POST = $original_post;
 
         if (! $added) {
             return ['success' => false, 'status' => 400, 'message' => 'Não foi possível adicionar ao carrinho.', 'data' => []];

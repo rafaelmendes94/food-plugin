@@ -148,3 +148,15 @@ body.rop-delivery-page footer:not(.rop-app footer) {
 [data-rop-app='1'] .checkout-bar > div {
     cursor: pointer;
 }
+
+
+/* v1.4.3 anti-flash for product screen */
+.rop-app:not(.rop-ready-product) #product-screen,
+[data-rop-app='1']:not(.rop-ready-product) #product-screen {
+    visibility: hidden;
+}
+
+.rop-app.rop-ready-product #product-screen,
+[data-rop-app='1'].rop-ready-product #product-screen {
+    visibility: visible;
+}

@@ -750,31 +750,28 @@
         const elems = getProductQtyElements(appRoot);
 
         if (elems.minusBtn) {
-            elems.minusBtn.onclick = null;
-            elems.minusBtn.addEventListener('click', function () {
+            elems.minusBtn.onclick = function () {
                 state.productQty = Math.max(1, state.productQty - 1);
                 updateProductQtyUI(appRoot);
-            });
+            };
         }
 
         if (elems.plusBtn) {
-            elems.plusBtn.onclick = null;
-            elems.plusBtn.addEventListener('click', function () {
+            elems.plusBtn.onclick = function () {
                 state.productQty = Math.min(99, state.productQty + 1);
                 updateProductQtyUI(appRoot);
-            });
+            };
         }
 
         const cta = getProductCta(appRoot);
         if (cta) {
-            cta.onclick = null;
-            cta.addEventListener('click', async function (e) {
+            cta.onclick = async function (e) {
                 e.preventDefault();
                 const ok = await addCurrentProductToCart(appRoot);
                 if (ok) {
                     goToCheckout(appRoot);
                 }
-            });
+            };
         }
     }
 
@@ -901,6 +898,12 @@
         const appRoot = getAppRoot();
         if (!appRoot) return;
 
+        state.currentProduct = null;
+        state.productQty = 1;
+        state.selectedVariationId = 0;
+        state.selectedAttributes = {};
+        appRoot.classList.remove('rop-ready-product');
+
         if (typeof window.navigateTo === 'function') {
             window.navigateTo('product-screen');
         }
@@ -910,14 +913,20 @@
 
         try {
             const response = await ropFetch('rop_get_product', { product_id: productId });
-            if (!response || !response.success || !response.data) {
-                return;
+            const product = response && response.success && response.data
+                ? (response.data.product || response.data)
+                : null;
+
+            if (!product) {
+                throw new Error('Falha ao carregar produto');
             }
 
-            state.currentProduct = response.data;
-            renderProductScreen(appRoot, response.data);
+            state.currentProduct = product;
+            renderProductScreen(appRoot, product);
+            appRoot.classList.add('rop-ready-product');
         } catch (err) {
             console.warn('ROP get product failed', err);
+            appRoot.classList.add('rop-ready-product');
         } finally {
             setProductLoading(appRoot, false);
         }
@@ -983,6 +992,7 @@
 
         appRoot.classList.remove('rop-ready');
         appRoot.classList.remove('rop-ready-cats');
+        appRoot.classList.remove('rop-ready-product');
 
         const homeScreen = getHomeScreen(appRoot);
         if (homeScreen) prepareHomeContainers(homeScreen);
@@ -991,6 +1001,9 @@
         if (originalNavigate) {
             window.navigateTo = function (screenId) {
                 originalNavigate(screenId);
+                if (screenId !== 'product-screen') {
+                    appRoot.classList.add('rop-ready-product');
+                }
                 updateFloatingButtonVisibility(appRoot);
             };
         }
@@ -1020,6 +1033,7 @@
             }
         };
 
+        appRoot.classList.add('rop-ready-product');
         updateFloatingButtonVisibility(appRoot);
         refreshCartSummary(appRoot);
 
