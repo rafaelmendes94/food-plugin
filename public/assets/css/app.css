@@ -142,3 +142,9 @@ body.rop-delivery-page footer:not(.rop-app footer) {
     opacity: 0.6;
     pointer-events: none;
 }
+
+
+.rop-app .checkout-bar > div,
+[data-rop-app='1'] .checkout-bar > div {
+    cursor: pointer;
+}

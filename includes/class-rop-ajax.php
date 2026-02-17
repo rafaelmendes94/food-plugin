@@ -26,6 +26,8 @@ class ROP_Ajax
         add_action('wp_ajax_nopriv_rop_get_product', [self::class, 'get_product']);
         add_action('wp_ajax_rop_add_to_cart', [self::class, 'add_to_cart']);
         add_action('wp_ajax_nopriv_rop_add_to_cart', [self::class, 'add_to_cart']);
+        add_action('wp_ajax_rop_get_cart_summary', [self::class, 'get_cart_summary']);
+        add_action('wp_ajax_nopriv_rop_get_cart_summary', [self::class, 'get_cart_summary']);
     }
 
     public static function get_store_settings()
@@ -314,34 +316,89 @@ class ROP_Ajax
         }
 
         $gallery = [];
-        $gallery_ids = $product->get_gallery_image_ids();
-
-        if (is_array($gallery_ids)) {
-            foreach ($gallery_ids as $gid) {
-                $url = wp_get_attachment_image_url((int) $gid, 'woocommerce_single');
-                if (! $url) {
-                    $url = wp_get_attachment_image_url((int) $gid, 'full');
-                }
-                if ($url) {
-                    $gallery[] = esc_url_raw($url);
-                }
+        foreach ((array) $product->get_gallery_image_ids() as $gid) {
+            $url = wp_get_attachment_image_url((int) $gid, 'woocommerce_single');
+            if (! $url) {
+                $url = wp_get_attachment_image_url((int) $gid, 'full');
+            }
+            if ($url) {
+                $gallery[] = esc_url_raw($url);
             }
         }
 
         $card_data = ROP_Woo::get_product_card_data($product);
-        $description = $product->get_short_description();
 
-        if (! $description) {
-            $description = $product->get_description();
-        }
+        $short_description = wp_strip_all_tags((string) $product->get_short_description());
+        $description = $short_description ?: wp_strip_all_tags((string) $product->get_description());
 
         $barn2_html = ROP_Compat_Barn2::render_options_html($product_id);
+
+        $is_variable = $product->is_type('variable');
+        $variable_attributes = [];
+        $variations = [];
+
+        if ($is_variable) {
+            $attr_map = $product->get_variation_attributes();
+            $wc_attrs = $product->get_attributes();
+
+            foreach ($attr_map as $attr_key => $options) {
+                $slug = sanitize_key((string) $attr_key);
+                $label = $slug;
+
+                if (isset($wc_attrs[$attr_key]) && $wc_attrs[$attr_key] instanceof WC_Product_Attribute) {
+                    $label = $wc_attrs[$attr_key]->get_name();
+                }
+
+                $pretty = wc_attribute_label($label, $product);
+
+                $formatted_options = [];
+                foreach ((array) $options as $opt) {
+                    $opt_slug = sanitize_title($opt);
+                    $opt_name = sanitize_text_field($opt);
+
+                    if (taxonomy_exists($attr_key)) {
+                        $term = get_term_by('slug', $opt_slug, $attr_key);
+                        if ($term && ! is_wp_error($term)) {
+                            $opt_name = sanitize_text_field($term->name);
+                        }
+                    }
+
+                    $formatted_options[] = [
+                        'slug' => $opt_slug,
+                        'name' => $opt_name,
+                    ];
+                }
+
+                $variable_attributes[] = [
+                    'name' => sanitize_text_field($pretty),
+                    'slug' => $slug,
+                    'options' => $formatted_options,
+                ];
+            }
+
+            foreach ((array) $product->get_available_variations() as $row) {
+                $attrs = [];
+                foreach ((array) ($row['attributes'] ?? []) as $k => $v) {
+                    $attrs[sanitize_key((string) $k)] = sanitize_title((string) $v);
+                }
+
+                $variations[] = [
+                    'variation_id' => (int) ($row['variation_id'] ?? 0),
+                    'is_in_stock' => (bool) ($row['is_in_stock'] ?? false),
+                    'price' => (float) ($row['display_price'] ?? 0),
+                    'price_html' => wp_kses_post((string) ($row['price_html'] ?? '')),
+                    'attributes' => $attrs,
+                ];
+            }
+        }
 
         wp_send_json_success([
             'id' => (int) $product_id,
             'type' => sanitize_text_field($product->get_type()),
             'name' => wp_strip_all_tags($product->get_name()),
-            'description' => wp_strip_all_tags((string) $description),
+            'description' => $description,
+            'short_description' => $short_description,
+            'formatted_price' => wp_strip_all_tags(wc_price((float) $product->get_price())),
             'price' => (float) $product->get_price(),
             'price_html' => wp_kses_post($product->get_price_html()),
             'image' => esc_url_raw($image),
@@ -352,8 +409,45 @@ class ROP_Ajax
             'category_name' => sanitize_text_field($card_data['category_name'] ?? ''),
             'category_slug' => sanitize_title($card_data['category_slug'] ?? ''),
             'is_simple' => $product->is_type('simple'),
+            'is_variable' => $is_variable,
+            'variable_attributes' => $variable_attributes,
+            'variations' => $variations,
             'has_addons' => ROP_Compat_Barn2::is_active() && trim($barn2_html) !== '',
             'barn2_html' => wp_kses_post($barn2_html),
+        ]);
+    }
+
+    public static function get_cart_summary()
+    {
+        check_ajax_referer('rop_ajax', 'nonce');
+
+        if (! ROP_Woo::is_woo_active()) {
+            wp_send_json_success([
+                'count' => 0,
+                'total_html' => 'R$ 0,00',
+                'total_raw' => 0,
+            ]);
+        }
+
+        self::ensure_cart_loaded();
+
+        if (! WC()->cart) {
+            wp_send_json_success([
+                'count' => 0,
+                'total_html' => 'R$ 0,00',
+                'total_raw' => 0,
+            ]);
+        }
+
+        $total_html = WC()->cart->get_total();
+        $total_raw = method_exists(WC()->cart, 'get_total')
+            ? (float) WC()->cart->get_total('edit')
+            : (float) WC()->cart->total;
+
+        wp_send_json_success([
+            'count' => (int) WC()->cart->get_cart_contents_count(),
+            'total_html' => wp_kses_post($total_html),
+            'total_raw' => $total_raw,
         ]);
     }
 
@@ -364,7 +458,7 @@ class ROP_Ajax
         $product_id = absint($_POST['product_id'] ?? 0);
         $qty = max(1, absint($_POST['qty'] ?? 1));
 
-        $result = self::add_product_to_cart($product_id, $qty, []);
+        $result = self::add_product_to_cart($product_id, $qty, 0, [], []);
 
         if (! $result['success']) {
             wp_send_json_error(['message' => $result['message']], $result['status']);
@@ -379,9 +473,26 @@ class ROP_Ajax
 
         $product_id = absint($_POST['product_id'] ?? 0);
         $qty = max(1, absint($_POST['qty'] ?? 1));
+        $variation_id = absint($_POST['variation_id'] ?? 0);
+
+        $raw_attrs = $_POST['attributes'] ?? [];
+        if (is_string($raw_attrs) && $raw_attrs !== '') {
+            $decoded_attrs = json_decode(wp_unslash($raw_attrs), true);
+            if (is_array($decoded_attrs)) {
+                $raw_attrs = $decoded_attrs;
+            }
+        }
+
+        $attributes = [];
+        if (is_array($raw_attrs)) {
+            foreach ($raw_attrs as $k => $v) {
+                $attributes[sanitize_key((string) $k)] = sanitize_title((string) $v);
+            }
+        }
+
         $extras = ROP_Compat_Barn2::parse_posted_options($_POST['extras'] ?? []);
 
-        $result = self::add_product_to_cart($product_id, $qty, $extras);
+        $result = self::add_product_to_cart($product_id, $qty, $variation_id, $attributes, $extras);
 
         if (! $result['success']) {
             wp_send_json_error(['message' => $result['message']], $result['status']);
@@ -390,93 +501,57 @@ class ROP_Ajax
         wp_send_json_success($result['data']);
     }
 
-    private static function add_product_to_cart($product_id, $qty, $extras)
+    private static function add_product_to_cart($product_id, $qty, $variation_id, $variation, $extras)
     {
         if (! ROP_Woo::is_woo_active()) {
-            return [
-                'success' => false,
-                'status' => 400,
-                'message' => 'WooCommerce não está ativo.',
-                'data' => [],
-            ];
+            return ['success' => false, 'status' => 400, 'message' => 'WooCommerce não está ativo.', 'data' => []];
         }
 
         if (! $product_id) {
-            return [
-                'success' => false,
-                'status' => 400,
-                'message' => 'Produto inválido.',
-                'data' => [],
-            ];
+            return ['success' => false, 'status' => 400, 'message' => 'Produto inválido.', 'data' => []];
         }
 
         $product = wc_get_product($product_id);
 
         if (! $product || 'publish' !== get_post_status($product_id)) {
-            return [
-                'success' => false,
-                'status' => 404,
-                'message' => 'Produto não encontrado.',
-                'data' => [],
-            ];
+            return ['success' => false, 'status' => 404, 'message' => 'Produto não encontrado.', 'data' => []];
         }
 
         if (! $product->is_purchasable() || ! $product->is_in_stock()) {
-            return [
-                'success' => false,
-                'status' => 400,
-                'message' => 'Produto indisponível.',
-                'data' => [],
-            ];
+            return ['success' => false, 'status' => 400, 'message' => 'Produto indisponível.', 'data' => []];
         }
 
-        if (function_exists('WC')) {
-            if (null === WC()->session && method_exists(WC(), 'initialize_session')) {
-                WC()->initialize_session();
-            }
-
-            if (null === WC()->cart) {
-                wc_load_cart();
-            }
-        }
+        self::ensure_cart_loaded();
 
         if (! WC()->cart) {
-            return [
-                'success' => false,
-                'status' => 500,
-                'message' => 'Carrinho indisponível.',
-                'data' => [],
-            ];
+            return ['success' => false, 'status' => 500, 'message' => 'Carrinho indisponível.', 'data' => []];
         }
 
         $cart_item_data = [];
-
         if (! empty($extras)) {
             $cart_item_data['rop_barn2_raw'] = $extras;
             $cart_item_data['rop_barn2_key'] = md5(wp_json_encode($extras));
         }
 
-        $variation_id = 0;
-        $variation = [];
+        if ($product->is_type('variable')) {
+            if (! $variation_id || empty($variation)) {
+                return ['success' => false, 'status' => 400, 'message' => 'Selecione opções.', 'data' => []];
+            }
 
-        if (! $product->is_type('simple')) {
-            return [
-                'success' => false,
-                'status' => 400,
-                'message' => 'Este item exige seleção de opções.',
-                'data' => [],
-            ];
+            $variation_product = wc_get_product($variation_id);
+            if (! $variation_product || (int) $variation_product->get_parent_id() !== (int) $product_id || ! $variation_product->is_in_stock()) {
+                return ['success' => false, 'status' => 400, 'message' => 'Variação inválida.', 'data' => []];
+            }
+
+            $added = WC()->cart->add_to_cart($product_id, $qty, $variation_id, $variation, $cart_item_data);
+        } elseif ($product->is_type('simple')) {
+            $added = WC()->cart->add_to_cart($product_id, $qty, 0, [], $cart_item_data);
+        } else {
+            return ['success' => false, 'status' => 400, 'message' => 'Este item exige seleção de opções.', 'data' => []];
         }
 
-        $added = WC()->cart->add_to_cart($product_id, $qty, $variation_id, $variation, $cart_item_data);
-
         if (! $added) {
-            return [
-                'success' => false,
-                'status' => 400,
-                'message' => 'Não foi possível adicionar ao carrinho.',
-                'data' => [],
-            ];
+            return ['success' => false, 'status' => 400, 'message' => 'Não foi possível adicionar ao carrinho.', 'data' => []];
         }
 
         return [
@@ -486,8 +561,20 @@ class ROP_Ajax
             'data' => [
                 'message' => 'Adicionado ao carrinho.',
                 'cart_count' => (int) WC()->cart->get_cart_contents_count(),
-                'cart_subtotal' => wp_kses_post(WC()->cart->get_cart_subtotal()),
+                'total_html' => wp_kses_post(WC()->cart->get_total()),
             ],
         ];
+    }
+
+    private static function ensure_cart_loaded()
+    {
+        if (function_exists('WC')) {
+            if (null === WC()->session && method_exists(WC(), 'initialize_session')) {
+                WC()->initialize_session();
+            }
+            if (null === WC()->cart) {
+                wc_load_cart();
+            }
+        }
     }
 }

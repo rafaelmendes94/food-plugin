@@ -10,7 +10,8 @@ class ROP_Compat_Barn2
     {
         return class_exists('Barn2\\Plugin\\WC_Product_Options\\Plugin')
             || defined('BARN2_WC_PRODUCT_OPTIONS_VERSION')
-            || shortcode_exists('product_options');
+            || shortcode_exists('product_options')
+            || function_exists('barn2_wc_product_options');
     }
 
     public static function render_options_html($product_id)

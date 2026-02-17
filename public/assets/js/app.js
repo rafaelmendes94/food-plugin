@@ -17,6 +17,8 @@
         currentProduct: null,
         productQty: 1,
         productLoading: false,
+        selectedVariationId: 0,
+        selectedAttributes: {},
     };
 
     async function ropFetch(action, data) {
@@ -218,46 +220,64 @@
     }
 
     async function addCurrentProductToCart(appRoot) {
-        if (!state.currentProduct) return;
+        if (!state.currentProduct) return false;
 
         const cta = getProductCta(appRoot);
         const originalText = cta ? cta.textContent : '';
 
-        if (!state.currentProduct.is_simple) {
+        if (state.currentProduct.is_variable) {
+            if (!state.selectedVariationId) {
+                if (cta) {
+                    cta.textContent = 'Selecione opções';
+                    setTimeout(function () { cta.textContent = originalText; }, 1200);
+                }
+                return false;
+            }
+        } else if (!state.currentProduct.is_simple) {
             if (cta) {
                 cta.textContent = 'Selecione opções';
                 setTimeout(function () { cta.textContent = originalText; }, 1200);
             }
-            return;
+            return false;
         }
 
         const extras = collectExtras(appRoot);
+        const payload = {
+            product_id: state.currentProduct.id,
+            qty: state.productQty,
+            extras: JSON.stringify(extras),
+        };
+
+        if (state.currentProduct.is_variable) {
+            payload.variation_id = state.selectedVariationId;
+            payload.attributes = JSON.stringify(state.selectedAttributes || {});
+        }
 
         try {
-            const response = await ropFetch('rop_add_to_cart', {
-                product_id: state.currentProduct.id,
-                qty: state.productQty,
-                extras: JSON.stringify(extras),
-            });
+            const response = await ropFetch('rop_add_to_cart', payload);
 
             if (!response || !response.success) {
                 if (cta) {
                     cta.textContent = 'Erro ao adicionar';
                     setTimeout(function () { cta.textContent = originalText; }, 1200);
                 }
-                return;
+                return false;
             }
 
             if (cta) {
                 cta.textContent = 'Adicionado!';
-                setTimeout(function () { cta.textContent = originalText; }, 1000);
+                setTimeout(function () { cta.textContent = originalText; }, 900);
             }
+
+            await refreshCartSummary(appRoot);
+            return true;
         } catch (err) {
             console.warn('ROP product add-to-cart failed', err);
             if (cta) {
                 cta.textContent = 'Erro ao adicionar';
                 setTimeout(function () { cta.textContent = originalText; }, 1200);
             }
+            return false;
         }
     }
 
@@ -592,6 +612,86 @@
         return checkoutBar.querySelector('div');
     }
 
+
+    function getFloatingPlusButton(appRoot) {
+        return appRoot ? appRoot.querySelector('.plus-button-floating') : null;
+    }
+
+    function updateFloatingButtonVisibility(appRoot) {
+        const btn = getFloatingPlusButton(appRoot);
+        if (!btn) return;
+        const productScreen = getProductScreen(appRoot);
+        const isProductVisible = productScreen && !productScreen.classList.contains('hidden');
+        btn.style.display = isProductVisible ? 'none' : '';
+    }
+
+    function getCheckoutScreen(appRoot) {
+        return appRoot ? appRoot.querySelector('#checkout-screen') : null;
+    }
+
+    function goToCheckout(appRoot) {
+        const checkoutScreen = getCheckoutScreen(appRoot);
+        if (checkoutScreen && typeof window.navigateTo === 'function') {
+            window.navigateTo('checkout-screen');
+            checkoutScreen.innerHTML = '<div class="p-6 text-gray-500 text-sm">Carregando checkout...</div>';
+            return;
+        }
+
+        if (typeof window.toggleModal === 'function') {
+            window.toggleModal('cart-modal');
+        }
+    }
+
+    async function refreshCartSummary(appRoot) {
+        const priceBox = getProductPriceBox(appRoot);
+        if (!priceBox) return;
+
+        let total = 'R$ 0,00';
+        try {
+            const response = await ropFetch('rop_get_cart_summary');
+            if (response && response.success && response.data) {
+                total = stripTags(response.data.total_html || '') || total;
+            }
+        } catch (err) {
+            console.warn('ROP cart summary failed', err);
+        }
+
+        priceBox.innerHTML = '<i data-lucide="shopping-bag" class="w-5 h-5 mr-2"></i> ' + total;
+        priceBox.style.cursor = 'pointer';
+        priceBox.onclick = function () {
+            if (typeof window.toggleModal === 'function') {
+                window.toggleModal('cart-modal');
+            }
+        };
+
+        if (window.lucide && typeof window.lucide.createIcons === 'function') {
+            window.lucide.createIcons();
+        }
+    }
+
+    function findMatchingVariation(productData, selectedAttrs) {
+        const list = Array.isArray(productData.variations) ? productData.variations : [];
+
+        for (const variation of list) {
+            if (!variation || !variation.is_in_stock) continue;
+            const attrs = variation.attributes || {};
+            let match = true;
+
+            for (const key of Object.keys(selectedAttrs)) {
+                const expected = String(selectedAttrs[key] || '').toLowerCase();
+                const got = String(attrs[key] || '').toLowerCase();
+                if (!expected || expected !== got) {
+                    match = false;
+                    break;
+                }
+            }
+
+            if (match) return variation;
+        }
+
+        return null;
+    }
+
     function getExtrasContainer(appRoot) {
         const productScreen = getProductScreen(appRoot);
         if (!productScreen) return null;
@@ -668,9 +768,12 @@
         const cta = getProductCta(appRoot);
         if (cta) {
             cta.onclick = null;
-            cta.addEventListener('click', function (e) {
+            cta.addEventListener('click', async function (e) {
                 e.preventDefault();
-                addCurrentProductToCart(appRoot);
+                const ok = await addCurrentProductToCart(appRoot);
+                if (ok) {
+                    goToCheckout(appRoot);
+                }
             });
         }
     }
@@ -689,7 +792,7 @@
         if (title) title.textContent = product.name || 'Produto';
 
         const description = productScreen.querySelector('p.text-gray-500');
-        if (description) description.innerText = product.description || 'Sem descrição disponível.';
+        if (description) description.innerText = product.short_description || product.description || 'Sem descrição disponível.';
 
         const ratingText = productScreen.querySelector('.text-gray-800.text-sm.font-bold');
         if (ratingText && typeof product.rating !== 'undefined') {
@@ -697,15 +800,84 @@
             ratingText.textContent = ratingValue;
         }
 
-        const priceBox = getProductPriceBox(appRoot);
-        if (priceBox) {
-            priceBox.textContent = priceText(product);
+        const ratingRow = productScreen.querySelector('.flex.items-center.gap-3.mt-2');
+        if (ratingRow) {
+            const spans = ratingRow.querySelectorAll('span');
+            if (spans.length) {
+                spans[spans.length - 1].textContent = '— Preço: ' + (product.formatted_price || formatBRL(product.price));
+            }
         }
 
         const extrasContainer = getExtrasContainer(appRoot);
+        state.selectedVariationId = 0;
+        state.selectedAttributes = {};
         if (extrasContainer) {
             extrasContainer.innerHTML = '';
-            if (product.barn2_html) {
+
+            if (product.is_variable && Array.isArray(product.variable_attributes) && product.variable_attributes.length) {
+                product.variable_attributes.forEach(function (attr) {
+                    const row = document.createElement('div');
+                    row.className = 'bg-gray-50 border border-gray-100 rounded-2xl p-3';
+
+                    const label = document.createElement('label');
+                    label.className = 'text-xs font-bold text-gray-500 uppercase tracking-wide block mb-2';
+                    label.textContent = attr.name || attr.slug;
+
+                    const select = document.createElement('select');
+                    select.className = 'w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700';
+                    select.setAttribute('data-attr', attr.slug || '');
+
+                    const empty = document.createElement('option');
+                    empty.value = '';
+                    empty.textContent = 'Selecione';
+                    select.appendChild(empty);
+
+                    (attr.options || []).forEach(function (opt) {
+                        const o = document.createElement('option');
+                        o.value = opt.slug || '';
+                        o.textContent = opt.name || opt.slug || '';
+                        select.appendChild(o);
+                    });
+
+                    select.addEventListener('change', function () {
+                        const attrs = {};
+                        extrasContainer.querySelectorAll('select[data-attr]').forEach(function (s) {
+                            const key = s.getAttribute('data-attr');
+                            const val = s.value || '';
+                            if (key && val) attrs[key] = val;
+                        });
+
+                        state.selectedAttributes = attrs;
+                        const match = findMatchingVariation(product, attrs);
+                        const cta = getProductCta(appRoot);
+
+                        if (match) {
+                            state.selectedVariationId = Number(match.variation_id || 0);
+                            if (ratingRow) {
+                                const spans = ratingRow.querySelectorAll('span');
+                                if (spans.length) {
+                                    const ptxt = stripTags(match.price_html || '') || formatBRL(match.price);
+                                    spans[spans.length - 1].textContent = '— Preço: ' + ptxt;
+                                }
+                            }
+                            if (cta) {
+                                cta.disabled = false;
+                                cta.textContent = 'Finalizar Pedido';
+                            }
+                        } else {
+                            state.selectedVariationId = 0;
+                            if (cta) {
+                                cta.disabled = true;
+                                cta.textContent = 'Selecione opções';
+                            }
+                        }
+                    });
+
+                    row.appendChild(label);
+                    row.appendChild(select);
+                    extrasContainer.appendChild(row);
+                });
+            } else if (product.barn2_html) {
                 extrasContainer.innerHTML = product.barn2_html;
             }
         }
@@ -713,6 +885,12 @@
         state.productQty = 1;
         updateProductQtyUI(appRoot);
         bindProductScreenControls(appRoot);
+        refreshCartSummary(appRoot);
+        const cta = getProductCta(appRoot);
+        if (cta && product.is_variable) {
+            cta.disabled = true;
+            cta.textContent = 'Selecione opções';
+        }
 
         if (window.lucide && typeof window.lucide.createIcons === 'function') {
             window.lucide.createIcons();
@@ -727,6 +905,7 @@
             window.navigateTo('product-screen');
         }
 
+        updateFloatingButtonVisibility(appRoot);
         setProductLoading(appRoot, true);
 
         try {
@@ -807,6 +986,42 @@
 
         const homeScreen = getHomeScreen(appRoot);
         if (homeScreen) prepareHomeContainers(homeScreen);
+
+        const originalNavigate = typeof window.navigateTo === 'function' ? window.navigateTo : null;
+        if (originalNavigate) {
+            window.navigateTo = function (screenId) {
+                originalNavigate(screenId);
+                updateFloatingButtonVisibility(appRoot);
+            };
+        }
+
+        window.checkStoreAndCheckout = async function () {
+            try {
+                const status = await ropFetch('rop_get_store_status');
+                const open = !!(status && status.success && status.data && status.data.is_open);
+                if (!open) {
+                    if (typeof window.openStoreClosedModal === 'function') window.openStoreClosedModal();
+                    else openClosedModalFallback();
+                    return;
+                }
+
+                const productScreen = getProductScreen(appRoot);
+                const productVisible = productScreen && !productScreen.classList.contains('hidden');
+                if (productVisible && state.currentProduct) {
+                    const ok = await addCurrentProductToCart(appRoot);
+                    if (ok) goToCheckout(appRoot);
+                    return;
+                }
+
+                goToCheckout(appRoot);
+            } catch (e) {
+                console.warn('ROP checkout override failed', e);
+                goToCheckout(appRoot);
+            }
+        };
+
+        updateFloatingButtonVisibility(appRoot);
+        refreshCartSummary(appRoot);
 
         try {
             await bootSettingsAndStatus(appRoot);
