@@ -1,4 +1,6 @@
 (function () {
+    const ropUseWooSingle = true;
+
     const state = {
         store: null,
         homeCategory: '',
@@ -794,6 +796,31 @@
         }
     }
 
+    function setWooSingleMode(appRoot, contentWrap, enabled) {
+        if (!appRoot) return;
+
+        const appDesc = ropQS(['#product-screen p.text-gray-500', '#product-screen .p-6 p']);
+        const buyBlock = contentWrap ? contentWrap.querySelector('[data-rop-buyblock="1"]') : null;
+        const extrasTitle = contentWrap
+            ? Array.from(contentWrap.querySelectorAll('h3')).find(function (h) {
+                return (h.textContent || '').trim().toLowerCase().indexOf('adicionar extras') !== -1;
+            })
+            : null;
+
+        if (enabled) {
+            appRoot.classList.add('rop-woo-single-active');
+            if (appDesc) appDesc.style.display = 'none';
+            if (buyBlock) buyBlock.style.display = 'none';
+            if (extrasTitle) extrasTitle.style.display = 'none';
+            return;
+        }
+
+        appRoot.classList.remove('rop-woo-single-active');
+        if (appDesc) appDesc.style.display = '';
+        if (buyBlock) buyBlock.style.display = '';
+        if (extrasTitle) extrasTitle.style.display = '';
+    }
+
     function setBuyBlockAddVisibility(contentWrap, visible) {
         if (!contentWrap) return;
         const buyBlock = contentWrap.querySelector('[data-rop-buyblock="1"]');
@@ -827,9 +854,12 @@
             }
         }
 
-        if (!product.barn2_active) {
+        const useEmbedded = !!(ropUseWooSingle && product && product.barn2_active);
+
+        if (!useEmbedded) {
             wooWrap.innerHTML = '';
             setBuyBlockAddVisibility(contentWrap, true);
+            setWooSingleMode(appRoot, contentWrap, false);
             return;
         }
 
@@ -837,7 +867,9 @@
             const response = await ropFetch('rop_render_single_product', { product_id: product.id });
             const html = response && response.success && response.data ? String(response.data.html || '') : '';
             wooWrap.innerHTML = html;
+            wooWrap.style.display = '';
             setBuyBlockAddVisibility(contentWrap, false);
+            setWooSingleMode(appRoot, contentWrap, true);
 
             const form = wooWrap.querySelector('form.cart');
             if (form) {
@@ -873,6 +905,7 @@
             console.warn('ROP embedded single render failed', err);
             wooWrap.innerHTML = '';
             setBuyBlockAddVisibility(contentWrap, true);
+            setWooSingleMode(appRoot, contentWrap, false);
         }
     }
 
@@ -1227,6 +1260,7 @@
                 originalNavigate(screenId);
                 if (screenId !== 'product-screen') {
                     appRoot.classList.add('rop-ready-product');
+                    appRoot.classList.remove('rop-woo-single-active');
                 }
                 updateFloatingButtonVisibility(appRoot);
             };

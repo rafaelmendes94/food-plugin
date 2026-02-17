@@ -484,7 +484,9 @@ class ROP_Ajax
         setup_postdata($post);
 
         ob_start();
+        echo '<div class="rop-woo-single-inner woocommerce">';
         wc_get_template_part('content', 'single-product');
+        echo '</div>';
         $html = ob_get_clean();
 
         wp_reset_postdata();
@@ -502,7 +504,7 @@ class ROP_Ajax
         }
 
         wp_send_json_success([
-            'html' => wp_kses_post($html),
+            'html' => is_string($html) ? $html : '',
         ]);
     }
 

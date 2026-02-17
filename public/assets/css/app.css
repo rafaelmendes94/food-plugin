@@ -261,3 +261,61 @@ body.rop-delivery-page footer:not(.rop-app footer) {
 .rop-app .rop-woo-single button.single_add_to_cart_button:hover {
     filter: brightness(0.95);
 }
+
+
+/* v1.4.8 embedded single as single source of product UI */
+.rop-app .rop-woo-single .woocommerce-breadcrumb,
+.rop-app .rop-woo-single .product_meta,
+.rop-app .rop-woo-single .woocommerce-tabs,
+.rop-app .rop-woo-single .related,
+.rop-app .rop-woo-single .upsells {
+    display: none !important;
+}
+
+.rop-app .rop-woo-single .summary {
+    margin: 0;
+}
+
+.rop-app .rop-woo-single .summary .price {
+    font-size: 20px;
+    font-weight: 800;
+    color: #111827;
+    margin: 10px 0 16px;
+}
+
+.rop-app .rop-woo-single .summary p {
+    color: #6B7280;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.rop-app .rop-woo-single input[type="checkbox"],
+.rop-app .rop-woo-single input[type="radio"] {
+    transform: scale(1.2);
+    margin-right: 10px;
+}
+
+.rop-app .rop-woo-single button.single_add_to_cart_button,
+.rop-app .rop-woo-single button.button {
+    margin-top: 16px;
+}
+
+.rop-app .rop-woo-single .quantity {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 12px 0;
+}
+
+.rop-app .rop-woo-single .quantity input.qty {
+    width: 90px;
+    text-align: center;
+}
+
+.rop-app.rop-woo-single-active [data-rop-buyblock="1"] {
+    display: none !important;
+}
+
+.rop-app.rop-woo-single-active #product-screen p.text-gray-500 {
+    display: none !important;
+}
