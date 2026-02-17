@@ -319,3 +319,21 @@ body.rop-delivery-page footer:not(.rop-app footer) {
 .rop-app.rop-woo-single-active #product-screen p.text-gray-500 {
     display: none !important;
 }
+
+
+/* v1.4.9 final product-screen heart removal + qty sync ui */
+.rop-app #product-screen i[data-lucide="heart"] {
+    display: none !important;
+}
+
+.rop-app .rop-woo-single .quantity {
+    display: block;
+}
+
+.rop-app .rop-woo-single .quantity > input.qty {
+    display: block;
+}
+
+.rop-app .rop-woo-single .quantity > .rop-qty-ui {
+    display: flex;
+}

@@ -469,19 +469,49 @@ class ROP_Ajax
         }
 
         $product_id = absint($_POST['product_id'] ?? 0);
-        $product = $product_id ? wc_get_product($product_id) : false;
         $post = $product_id ? get_post($product_id) : null;
 
-        if (! $product || ! $post instanceof WP_Post || 'publish' !== get_post_status($product_id)) {
+        if (! $post instanceof WP_Post || $post->post_type !== 'product') {
+            wp_send_json_error(['message' => 'Produto inválido.'], 404);
+        }
+
+        $product = wc_get_product($product_id);
+        if (! $product || 'publish' !== get_post_status($product_id)) {
             wp_send_json_error(['message' => 'Produto não encontrado.'], 404);
         }
 
-        $previous_post = $GLOBALS['post'] ?? null;
-        $previous_product = $GLOBALS['product'] ?? null;
+        $old_wp_query = $GLOBALS['wp_query'] ?? null;
+        $old_wp_the_query = $GLOBALS['wp_the_query'] ?? null;
+        $old_post = $GLOBALS['post'] ?? null;
+        $old_product = $GLOBALS['product'] ?? null;
 
+        $q = new WP_Query([
+            'p' => $product_id,
+            'post_type' => 'product',
+            'post_status' => 'publish',
+            'no_found_rows' => true,
+            'ignore_sticky_posts' => true,
+        ]);
+
+        $q->is_singular = true;
+        $q->is_single = true;
+        $q->is_page = false;
+        $q->is_home = false;
+        $q->is_archive = false;
+        $q->is_search = false;
+        $q->is_404 = false;
+        $q->queried_object = $post;
+        $q->queried_object_id = $product_id;
+
+        $GLOBALS['wp_query'] = $q;
+        $GLOBALS['wp_the_query'] = $q;
         $GLOBALS['post'] = $post;
         $GLOBALS['product'] = $product;
+
         setup_postdata($post);
+
+        do_action('wp');
+        do_action('template_redirect');
 
         ob_start();
         echo '<div class="rop-woo-single-inner woocommerce">';
@@ -491,17 +521,20 @@ class ROP_Ajax
 
         wp_reset_postdata();
 
-        if ($previous_post) {
-            $GLOBALS['post'] = $previous_post;
+        if ($old_post) {
+            $GLOBALS['post'] = $old_post;
         } else {
             unset($GLOBALS['post']);
         }
 
-        if ($previous_product) {
-            $GLOBALS['product'] = $previous_product;
+        if ($old_product) {
+            $GLOBALS['product'] = $old_product;
         } else {
             unset($GLOBALS['product']);
         }
+
+        $GLOBALS['wp_query'] = $old_wp_query;
+        $GLOBALS['wp_the_query'] = $old_wp_the_query;
 
         wp_send_json_success([
             'html' => is_string($html) ? $html : '',
