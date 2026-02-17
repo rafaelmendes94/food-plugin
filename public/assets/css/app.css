@@ -4,12 +4,14 @@ body.rop-delivery-page {
     background: #f8f9fa;
 }
 
-.rop-delivery-page header,
-.rop-delivery-page footer,
-.rop-delivery-page #masthead,
-.rop-delivery-page #colophon,
-.rop-delivery-page .site-header,
-.rop-delivery-page .site-footer {
+body.rop-delivery-page > header,
+body.rop-delivery-page > footer,
+body.rop-delivery-page .site-header,
+body.rop-delivery-page .site-footer,
+body.rop-delivery-page #masthead,
+body.rop-delivery-page #colophon,
+body.rop-delivery-page header:not(.rop-app header),
+body.rop-delivery-page footer:not(.rop-app footer) {
     display: none !important;
 }
 
