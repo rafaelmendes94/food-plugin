@@ -331,7 +331,7 @@ class ROP_Ajax
         $short_description = trim(wp_strip_all_tags((string) $product->get_short_description()));
         $description = trim(wp_strip_all_tags((string) $product->get_description()));
 
-        $barn2_html = ROP_Compat_Barn2::is_active() ? ROP_Compat_Barn2::render_options_html($product_id) : '';
+        $barn2_html = ROP_Compat_Barn2::render_options_html($product_id);
 
         $is_variable = $product->is_type('variable');
         $variable_attributes = [];

@@ -175,3 +175,33 @@ body.rop-delivery-page footer:not(.rop-app footer) {
 .rop-app #product-screen button:has(i[data-lucide="heart"]) {
     display: none !important;
 }
+
+
+/* v1.4.6 Barn2 fields-only styling in app */
+.rop-app .rop-barn2-scope button,
+.rop-app .rop-barn2-scope input[type="submit"],
+.rop-app .rop-barn2-scope .single_add_to_cart_button,
+.rop-app .rop-barn2-scope .quantity,
+.rop-app .rop-barn2-scope input[name="quantity"] {
+    display: none !important;
+}
+
+.rop-app .rop-barn2-scope input[type="text"],
+.rop-app .rop-barn2-scope input[type="number"],
+.rop-app .rop-barn2-scope select,
+.rop-app .rop-barn2-scope textarea {
+    width: 100%;
+    padding: 14px 16px;
+    background-color: #F9FAFB;
+    border: 1px solid #F3F4F6;
+    border-radius: 16px;
+    font-size: 14px;
+    color: #374151;
+    outline: none;
+}
+
+.rop-app .rop-barn2-scope label {
+    font-size: 14px;
+    font-weight: 600;
+    color: #374151;
+}

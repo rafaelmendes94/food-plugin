@@ -731,11 +731,11 @@
     }
 
     function collectExtras(appRoot) {
-        const container = getExtrasContainer(appRoot);
-        if (!container) return [];
+        const scope = appRoot ? appRoot.querySelector('#product-screen .rop-barn2-scope') : null;
+        if (!scope) return [];
 
         const extras = [];
-        const fields = container.querySelectorAll('input[name], select[name], textarea[name]');
+        const fields = scope.querySelectorAll('input[name], select[name], textarea[name]');
 
         fields.forEach(function (field) {
             const key = field.name;
@@ -990,25 +990,32 @@
 
         setProductMetaPrice(productScreen, product, null);
 
-        const extrasContainer = ropQS([
-            '#product-screen h3 + .space-y-4',
-            '#product-screen .mb-8 .space-y-4',
-        ], productScreen);
+        let extrasBlock = contentWrap.querySelector('[data-rop-extrasblock="1"]');
+        if (!extrasBlock) {
+            extrasBlock = document.createElement('div');
+            extrasBlock.className = 'mb-6';
+            extrasBlock.setAttribute('data-rop-extrasblock', '1');
+            contentWrap.insertBefore(extrasBlock, buyBlock);
+        } else {
+            contentWrap.insertBefore(extrasBlock, buyBlock);
+        }
 
         state.selectedVariationId = 0;
         state.selectedAttributes = {};
 
-        if (extrasContainer) {
-            extrasContainer.innerHTML = '';
+        extrasBlock.innerHTML = '';
+        if (product.barn2_html || (product.is_variable && Array.isArray(product.variable_attributes) && product.variable_attributes.length)) {
+            extrasBlock.innerHTML = '<div class="mb-3"><h3 class="font-bold text-gray-800 text-lg mb-4">Adicionar Extras</h3><div class="space-y-4 rop-barn2-scope"></div></div>';
+            const extrasScope = extrasBlock.querySelector('.rop-barn2-scope');
 
-            if (product.is_variable && Array.isArray(product.variable_attributes) && product.variable_attributes.length) {
-                renderVariationSelectors(extrasContainer, product, appRoot, productScreen);
+            if (extrasScope && product.is_variable && Array.isArray(product.variable_attributes) && product.variable_attributes.length) {
+                renderVariationSelectors(extrasScope, product, appRoot, productScreen);
             }
 
-            if (product.barn2_html) {
+            if (extrasScope && product.barn2_html) {
                 const wrap = document.createElement('div');
                 wrap.innerHTML = product.barn2_html;
-                extrasContainer.appendChild(wrap);
+                extrasScope.appendChild(wrap);
             }
         }
 
