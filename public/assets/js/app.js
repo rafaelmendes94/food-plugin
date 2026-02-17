@@ -794,6 +794,88 @@
         }
     }
 
+    function setBuyBlockAddVisibility(contentWrap, visible) {
+        if (!contentWrap) return;
+        const buyBlock = contentWrap.querySelector('[data-rop-buyblock="1"]');
+        if (!buyBlock) return;
+        const addBtn = buyBlock.querySelector('[data-rop-add]');
+        if (addBtn) {
+            addBtn.style.display = visible ? '' : 'none';
+        }
+    }
+
+    async function mountEmbeddedWooSingle(appRoot, product) {
+        const productScreen = getProductScreen(appRoot);
+        if (!productScreen) return;
+
+        const contentWrap = ropQS([
+            '#product-screen .p-6.pb-44',
+            '#product-screen .p-6',
+        ], productScreen);
+        if (!contentWrap) return;
+
+        let wooWrap = contentWrap.querySelector('[data-rop-woo-single="1"]');
+        if (!wooWrap) {
+            wooWrap = document.createElement('div');
+            wooWrap.setAttribute('data-rop-woo-single', '1');
+            wooWrap.className = 'rop-woo-single mt-6';
+            const buyBlock = contentWrap.querySelector('[data-rop-buyblock="1"]');
+            if (buyBlock) {
+                contentWrap.insertBefore(wooWrap, buyBlock);
+            } else {
+                contentWrap.appendChild(wooWrap);
+            }
+        }
+
+        if (!product.barn2_active) {
+            wooWrap.innerHTML = '';
+            setBuyBlockAddVisibility(contentWrap, true);
+            return;
+        }
+
+        try {
+            const response = await ropFetch('rop_render_single_product', { product_id: product.id });
+            const html = response && response.success && response.data ? String(response.data.html || '') : '';
+            wooWrap.innerHTML = html;
+            setBuyBlockAddVisibility(contentWrap, false);
+
+            const form = wooWrap.querySelector('form.cart');
+            if (form) {
+                form.onsubmit = async function (e) {
+                    e.preventDefault();
+
+                    const fd = new FormData(form);
+                    const payload = {};
+                    fd.forEach(function (v, k) {
+                        if (Object.prototype.hasOwnProperty.call(payload, k)) {
+                            if (!Array.isArray(payload[k])) payload[k] = [payload[k]];
+                            payload[k].push(v);
+                        } else {
+                            payload[k] = v;
+                        }
+                    });
+
+                    const res = await ropFetch('rop_add_to_cart_from_form', {
+                        product_id: product.id,
+                        form: JSON.stringify(payload),
+                    });
+
+                    if (res && res.success) {
+                        await refreshCartSummary(appRoot);
+                    }
+                };
+            }
+
+            if (window.lucide && typeof window.lucide.createIcons === 'function') {
+                window.lucide.createIcons();
+            }
+        } catch (err) {
+            console.warn('ROP embedded single render failed', err);
+            wooWrap.innerHTML = '';
+            setBuyBlockAddVisibility(contentWrap, true);
+        }
+    }
+
     function setProductMetaPrice(productScreen, product, variation) {
         const metaRow = ropQS([
             '#product-screen .mb-5 .flex.items-center.gap-3.mt-2',
@@ -1064,6 +1146,7 @@
 
             state.currentProduct = product;
             renderProductScreen(appRoot, product);
+            await mountEmbeddedWooSingle(appRoot, product);
             appRoot.classList.add('rop-ready-product');
         } catch (err) {
             console.warn('ROP get product failed', err);

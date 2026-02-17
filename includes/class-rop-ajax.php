@@ -28,6 +28,10 @@ class ROP_Ajax
         add_action('wp_ajax_nopriv_rop_add_to_cart', [self::class, 'add_to_cart']);
         add_action('wp_ajax_rop_get_cart_summary', [self::class, 'get_cart_summary']);
         add_action('wp_ajax_nopriv_rop_get_cart_summary', [self::class, 'get_cart_summary']);
+        add_action('wp_ajax_rop_render_single_product', [self::class, 'render_single_product']);
+        add_action('wp_ajax_nopriv_rop_render_single_product', [self::class, 'render_single_product']);
+        add_action('wp_ajax_rop_add_to_cart_from_form', [self::class, 'add_to_cart_from_form']);
+        add_action('wp_ajax_nopriv_rop_add_to_cart_from_form', [self::class, 'add_to_cart_from_form']);
     }
 
     public static function get_store_settings()
@@ -413,6 +417,7 @@ class ROP_Ajax
             'variable_attributes' => $variable_attributes,
             'variations' => $variations,
             'has_addons' => ROP_Compat_Barn2::is_active() && trim($barn2_html) !== '',
+            'barn2_active' => (bool) ROP_Compat_Barn2::is_active(),
             'barn2_html' => wp_kses_post($barn2_html),
         ];
 
@@ -453,6 +458,96 @@ class ROP_Ajax
             'total_html' => wp_kses_post($total_html),
             'total_raw' => $total_raw,
         ]);
+    }
+
+    public static function render_single_product()
+    {
+        check_ajax_referer('rop_ajax', 'nonce');
+
+        if (! ROP_Woo::is_woo_active()) {
+            wp_send_json_error(['message' => 'WooCommerce não está ativo.'], 400);
+        }
+
+        $product_id = absint($_POST['product_id'] ?? 0);
+        $product = $product_id ? wc_get_product($product_id) : false;
+        $post = $product_id ? get_post($product_id) : null;
+
+        if (! $product || ! $post instanceof WP_Post || 'publish' !== get_post_status($product_id)) {
+            wp_send_json_error(['message' => 'Produto não encontrado.'], 404);
+        }
+
+        $previous_post = $GLOBALS['post'] ?? null;
+        $previous_product = $GLOBALS['product'] ?? null;
+
+        $GLOBALS['post'] = $post;
+        $GLOBALS['product'] = $product;
+        setup_postdata($post);
+
+        ob_start();
+        wc_get_template_part('content', 'single-product');
+        $html = ob_get_clean();
+
+        wp_reset_postdata();
+
+        if ($previous_post) {
+            $GLOBALS['post'] = $previous_post;
+        } else {
+            unset($GLOBALS['post']);
+        }
+
+        if ($previous_product) {
+            $GLOBALS['product'] = $previous_product;
+        } else {
+            unset($GLOBALS['product']);
+        }
+
+        wp_send_json_success([
+            'html' => wp_kses_post($html),
+        ]);
+    }
+
+    public static function add_to_cart_from_form()
+    {
+        check_ajax_referer('rop_ajax', 'nonce');
+
+        $product_id = absint($_POST['product_id'] ?? 0);
+        $form_json = wp_unslash($_POST['form'] ?? '');
+        $raw_form = is_string($form_json) ? json_decode($form_json, true) : [];
+        $raw_form = is_array($raw_form) ? $raw_form : [];
+
+        $posted = [];
+        foreach ($raw_form as $k => $v) {
+            $key = sanitize_text_field((string) $k);
+            if ($key === '') {
+                continue;
+            }
+
+            if (is_array($v)) {
+                $posted[$key] = array_values(array_map(static function ($item) {
+                    return sanitize_text_field((string) $item);
+                }, $v));
+            } else {
+                $posted[$key] = sanitize_text_field((string) $v);
+            }
+        }
+
+        $qty = max(1, absint($posted['quantity'] ?? 1));
+        $variation_id = absint($posted['variation_id'] ?? 0);
+        $attributes = [];
+
+        foreach ($posted as $key => $value) {
+            if (strpos($key, 'attribute_') === 0) {
+                $attributes[sanitize_key($key)] = sanitize_title((string) $value);
+            }
+        }
+
+        $result = self::add_product_to_cart($product_id, $qty, $variation_id, $attributes, $posted);
+
+        if (! $result['success']) {
+            wp_send_json_error(['message' => $result['message']], $result['status']);
+        }
+
+        wp_send_json_success($result['data']);
     }
 
     public static function add_to_cart_simple()

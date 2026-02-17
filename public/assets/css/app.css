@@ -205,3 +205,59 @@ body.rop-delivery-page footer:not(.rop-app footer) {
     font-weight: 600;
     color: #374151;
 }
+
+
+/* v1.4.7 embedded Woo single styling */
+.rop-app .rop-woo-single .woocommerce-breadcrumb,
+.rop-app .rop-woo-single .product_meta,
+.rop-app .rop-woo-single .woocommerce-tabs,
+.rop-app .rop-woo-single .related,
+.rop-app .rop-woo-single .upsells,
+.rop-app .rop-woo-single .woocommerce-product-gallery,
+.rop-app .rop-woo-single h1.product_title {
+    display: none !important;
+}
+
+.rop-app .rop-woo-single form.cart {
+    margin: 0;
+    padding: 0;
+}
+
+.rop-app .rop-woo-single select,
+.rop-app .rop-woo-single input[type="text"],
+.rop-app .rop-woo-single input[type="number"],
+.rop-app .rop-woo-single textarea {
+    width: 100%;
+    padding: 14px 16px;
+    background-color: #F9FAFB;
+    border: 1px solid #F3F4F6;
+    border-radius: 16px;
+    font-size: 14px;
+    color: #374151;
+    outline: none;
+}
+
+.rop-app .rop-woo-single label {
+    font-size: 14px;
+    font-weight: 700;
+    color: #374151;
+    display: block;
+    margin-bottom: 8px;
+}
+
+.rop-app .rop-woo-single button.single_add_to_cart_button,
+.rop-app .rop-woo-single button.button {
+    width: 100%;
+    background: #EF4444;
+    color: #fff;
+    border: 0;
+    border-radius: 20px;
+    padding: 16px 18px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.rop-app .rop-woo-single button.single_add_to_cart_button:hover {
+    filter: brightness(0.95);
+}
