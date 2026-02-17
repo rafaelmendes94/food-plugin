@@ -62,6 +62,20 @@
         return homeScreen ? homeScreen.querySelector('div.grid.grid-cols-2.md\\:grid-cols-3.lg\\:grid-cols-4.xl\\:grid-cols-5') : null;
     }
 
+    function prepareHomeContainers(homeScreen) {
+        const grid = getHomeGrid(homeScreen);
+        if (grid) {
+            grid.style.visibility = 'hidden';
+            grid.innerHTML = '';
+        }
+
+        const chips = getHomeChipsContainer(homeScreen);
+        if (chips) {
+            chips.style.visibility = 'hidden';
+            chips.innerHTML = '';
+        }
+    }
+
     function getFilterModal() {
         return document.getElementById('filter-modal');
     }
@@ -135,8 +149,7 @@
     }
 
     function productSubtext(product) {
-        if (product.short) return product.short;
-        if (state.store && state.store.store_name) return state.store.store_name;
+        if (product.category_name) return product.category_name;
         return '—';
     }
 
@@ -187,6 +200,8 @@
             });
             container.appendChild(btn);
         });
+
+        container.style.visibility = 'visible';
     }
 
     function renderProducts(homeScreen, products, append) {
@@ -218,6 +233,13 @@
             const subtitle = card.querySelector('p');
             if (subtitle) subtitle.textContent = productSubtext(product);
 
+            const allParagraphs = card.querySelectorAll('p');
+            allParagraphs.forEach(function (paragraph) {
+                if (paragraph !== subtitle) {
+                    paragraph.style.display = 'none';
+                }
+            });
+
             const price = card.querySelector('span');
             if (price) price.textContent = productDisplayPrice(product);
 
@@ -240,6 +262,10 @@
 
             grid.appendChild(card);
         });
+
+        if (!append) {
+            grid.style.visibility = 'visible';
+        }
 
         if (window.lucide && typeof window.lucide.createIcons === 'function') {
             window.lucide.createIcons();
@@ -300,6 +326,10 @@
 
             const data = response.data;
             const products = Array.isArray(data.products) ? data.products : [];
+            if (!append && products.length === 0) {
+                const grid = getHomeGrid(homeScreen);
+                if (grid) grid.style.visibility = 'visible';
+            }
             renderProducts(homeScreen, products, append);
 
             state.hasMore = !!data.has_more;
@@ -550,6 +580,8 @@
         const homeScreen = getHomeScreen(appRoot);
         if (!homeScreen) return;
 
+        prepareHomeContainers(homeScreen);
+
         await loadCategories();
         renderHomeCategoryChips(homeScreen);
         bindSearch(homeScreen);
@@ -593,6 +625,11 @@
     document.addEventListener('DOMContentLoaded', async function () {
         const appRoot = getAppRoot();
         if (!appRoot || !window.ropAjax) return;
+
+        const homeScreen = getHomeScreen(appRoot);
+        if (homeScreen) {
+            prepareHomeContainers(homeScreen);
+        }
 
         await bootSettingsAndStatus(appRoot);
         await bootHomeRealData(appRoot);
