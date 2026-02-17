@@ -9,6 +9,8 @@ class ROP_Pages
     public static function init()
     {
         add_shortcode('rop_foodgo_app', [__CLASS__, 'render_foodgo_app']);
+        add_filter('template_include', [__CLASS__, 'maybe_use_delivery_template'], 999);
+        add_filter('body_class', [__CLASS__, 'add_delivery_body_class']);
     }
 
     public static function activate()
@@ -40,5 +42,50 @@ class ROP_Pages
         ob_start();
         include ROP_PATH . 'public/views/app-shell.php';
         return ob_get_clean();
+    }
+
+    public static function maybe_use_delivery_template($template)
+    {
+        if (! self::is_delivery_request()) {
+            return $template;
+        }
+
+        $blank_template = ROP_PATH . 'public/views/blank-wrapper.php';
+
+        if (file_exists($blank_template)) {
+            return $blank_template;
+        }
+
+        return $template;
+    }
+
+    public static function add_delivery_body_class($classes)
+    {
+        if (! self::is_delivery_request()) {
+            return $classes;
+        }
+
+        $classes[] = 'rop-delivery-page';
+
+        return array_values(array_unique($classes));
+    }
+
+    private static function is_delivery_request()
+    {
+        if (is_admin()) {
+            return false;
+        }
+
+        if (is_page('delivery')) {
+            return true;
+        }
+
+        $queried_id = get_queried_object_id();
+
+        if (! $queried_id) {
+            return false;
+        }
+
+        return get_post_field('post_name', $queried_id) === 'delivery';
     }
 }
