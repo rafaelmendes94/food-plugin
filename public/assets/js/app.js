@@ -149,18 +149,21 @@
         return btn;
     }
 
-    function renderHomeCategoryChips(homeScreen) {
+    function renderHomeCategoryChips(appRoot, homeScreen) {
         const container = getHomeChipsContainer(homeScreen);
-        if (!container) return;
+        if (!container) {
+            if (appRoot) appRoot.classList.add('rop-ready-cats');
+            return;
+        }
 
-        const templateButton = container.querySelector('button') || document.createElement('button');
+        const templateButton = document.createElement('button');
         container.innerHTML = '';
 
         container.appendChild(makeHomeChip(templateButton, 'Tudo', state.homeCategory === '', function () {
             state.homeCategory = '';
             state.modalCategory = '';
             resetAndLoadProducts(homeScreen);
-            renderHomeCategoryChips(homeScreen);
+            renderHomeCategoryChips(appRoot, homeScreen);
         }));
 
         state.categories.forEach(function (cat) {
@@ -168,9 +171,12 @@
                 state.homeCategory = cat.slug;
                 state.modalCategory = cat.slug;
                 resetAndLoadProducts(homeScreen);
-                renderHomeCategoryChips(homeScreen);
+                renderHomeCategoryChips(appRoot, homeScreen);
             }));
         });
+
+        if (appRoot) appRoot.classList.add('rop-ready-cats');
+        if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
     }
 
     function priceText(product) {
@@ -288,6 +294,7 @@
             const appRoot = getAppRoot();
             if (appRoot && !appRoot.classList.contains('rop-ready')) {
                 appRoot.classList.add('rop-ready');
+            appRoot.classList.add('rop-ready-cats');
                 if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
             }
         }
@@ -408,7 +415,7 @@
         });
     }
 
-    function bindFilterModal(homeScreen) {
+    function bindFilterModal(appRoot, homeScreen) {
         const modal = getFilterModal();
         if (!modal) return;
 
@@ -474,7 +481,7 @@
         if (applyBtn) {
             applyBtn.addEventListener('click', function () {
                 state.homeCategory = state.modalCategory || '';
-                renderHomeCategoryChips(homeScreen);
+                renderHomeCategoryChips(appRoot, homeScreen);
                 resetAndLoadProducts(homeScreen);
             });
         }
@@ -500,9 +507,9 @@
 
         prepareHomeContainers(homeScreen);
         await loadCategories();
-        renderHomeCategoryChips(homeScreen);
+        renderHomeCategoryChips(appRoot, homeScreen);
         bindSearch(homeScreen);
-        bindFilterModal(homeScreen);
+        bindFilterModal(appRoot, homeScreen);
         bindInfiniteScroll(homeScreen);
         resetAndLoadProducts(homeScreen);
     }
@@ -539,6 +546,7 @@
         if (!appRoot || !window.ropAjax) return;
 
         appRoot.classList.remove('rop-ready');
+        appRoot.classList.remove('rop-ready-cats');
 
         const homeScreen = getHomeScreen(appRoot);
         if (homeScreen) prepareHomeContainers(homeScreen);
@@ -549,6 +557,7 @@
         } catch (err) {
             console.warn('ROP home boot failed', err);
             appRoot.classList.add('rop-ready');
+            appRoot.classList.add('rop-ready-cats');
             if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
         }
     });

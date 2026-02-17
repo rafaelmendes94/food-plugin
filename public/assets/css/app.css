@@ -116,3 +116,22 @@ body.rop-delivery-page footer:not(.rop-app footer) {
 [data-rop-app='1'].rop-ready #home-screen [class*='grid-cols-2'] {
     visibility: visible;
 }
+
+
+/* v1.3.3 anti-flash for home category chips */
+.rop-app:not(.rop-ready-cats) #home-screen .px-6 .no-scrollbar,
+[data-rop-app='1']:not(.rop-ready-cats) #home-screen .px-6 .no-scrollbar {
+    visibility: hidden;
+}
+
+.rop-app:not(.rop-ready-cats) #home-screen .px-6 .no-scrollbar button,
+.rop-app:not(.rop-ready-cats) #home-screen .px-6 .no-scrollbar .filter-chip,
+[data-rop-app='1']:not(.rop-ready-cats) #home-screen .px-6 .no-scrollbar button,
+[data-rop-app='1']:not(.rop-ready-cats) #home-screen .px-6 .no-scrollbar .filter-chip {
+    display: none;
+}
+
+.rop-app.rop-ready-cats #home-screen .px-6 .no-scrollbar,
+[data-rop-app='1'].rop-ready-cats #home-screen .px-6 .no-scrollbar {
+    visibility: visible;
+}
