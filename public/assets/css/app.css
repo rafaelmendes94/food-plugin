@@ -99,3 +99,20 @@ body.rop-delivery-page footer:not(.rop-app footer) {
 [data-rop-app='1'] .product-card .absolute.bottom-4.right-4 {
     margin-top: auto;
 }
+
+
+/* v1.3.2 anti-flash before first paint */
+.rop-app #home-screen [class*='grid-cols-2'],
+[data-rop-app='1'] #home-screen [class*='grid-cols-2'] {
+    visibility: hidden;
+}
+
+.rop-app:not(.rop-ready) #home-screen .product-card,
+[data-rop-app='1']:not(.rop-ready) #home-screen .product-card {
+    display: none;
+}
+
+.rop-app.rop-ready #home-screen [class*='grid-cols-2'],
+[data-rop-app='1'].rop-ready #home-screen [class*='grid-cols-2'] {
+    visibility: visible;
+}
