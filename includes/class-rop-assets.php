@@ -26,6 +26,11 @@ class ROP_Assets
             ROP_VERSION,
             true
         );
+
+        wp_localize_script('rop-app', 'ropAjax', [
+            'url' => admin_url('admin-ajax.php'),
+            'nonce' => wp_create_nonce('rop_ajax'),
+        ]);
     }
 
     private static function is_delivery_request()

@@ -33,6 +33,7 @@ class ROP_Plugin
     public function init()
     {
         ROP_Pages::init();
+        ROP_Ajax::register();
     }
 
     public function enqueue_front_assets()
