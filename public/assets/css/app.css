@@ -135,3 +135,10 @@ body.rop-delivery-page footer:not(.rop-app footer) {
 [data-rop-app='1'].rop-ready-cats #home-screen .px-6 .no-scrollbar {
     visibility: visible;
 }
+
+
+.rop-app #product-screen.rop-loading,
+[data-rop-app='1'] #product-screen.rop-loading {
+    opacity: 0.6;
+    pointer-events: none;
+}

@@ -14,6 +14,9 @@
         categories: [],
         searchTimer: null,
         suggestTimer: null,
+        currentProduct: null,
+        productQty: 1,
+        productLoading: false,
     };
 
     async function ropFetch(action, data) {
@@ -30,6 +33,17 @@
         });
 
         return res.json();
+    }
+
+    function formatBRL(price) {
+        const n = Number(price || 0);
+        return 'R$ ' + n.toFixed(2).replace('.', ',');
+    }
+
+    function stripTags(html) {
+        const div = document.createElement('div');
+        div.innerHTML = String(html || '');
+        return (div.textContent || div.innerText || '').trim();
     }
 
     function getAppRoot() {
@@ -57,6 +71,22 @@
 
     function getFilterModal() {
         return document.getElementById('filter-modal');
+    }
+
+    function getProductScreen(appRoot) {
+        return appRoot ? appRoot.querySelector('#product-screen') : null;
+    }
+
+    function setProductLoading(appRoot, loading) {
+        const productScreen = getProductScreen(appRoot);
+        if (!productScreen) return;
+
+        state.productLoading = !!loading;
+        if (loading) {
+            productScreen.classList.add('rop-loading');
+        } else {
+            productScreen.classList.remove('rop-loading');
+        }
     }
 
     function applyStoreVars(appRoot, store) {
@@ -181,10 +211,54 @@
 
     function priceText(product) {
         if (typeof product.price === 'number' && !Number.isNaN(product.price)) {
-            return 'R$ ' + product.price.toFixed(2).replace('.', ',');
+            return formatBRL(product.price);
         }
         const stripped = String(product.price_html || '').replace(/<[^>]+>/g, '').trim();
         return stripped || '—';
+    }
+
+    async function addCurrentProductToCart(appRoot) {
+        if (!state.currentProduct) return;
+
+        const cta = getProductCta(appRoot);
+        const originalText = cta ? cta.textContent : '';
+
+        if (!state.currentProduct.is_simple) {
+            if (cta) {
+                cta.textContent = 'Selecione opções';
+                setTimeout(function () { cta.textContent = originalText; }, 1200);
+            }
+            return;
+        }
+
+        const extras = collectExtras(appRoot);
+
+        try {
+            const response = await ropFetch('rop_add_to_cart', {
+                product_id: state.currentProduct.id,
+                qty: state.productQty,
+                extras: JSON.stringify(extras),
+            });
+
+            if (!response || !response.success) {
+                if (cta) {
+                    cta.textContent = 'Erro ao adicionar';
+                    setTimeout(function () { cta.textContent = originalText; }, 1200);
+                }
+                return;
+            }
+
+            if (cta) {
+                cta.textContent = 'Adicionado!';
+                setTimeout(function () { cta.textContent = originalText; }, 1000);
+            }
+        } catch (err) {
+            console.warn('ROP product add-to-cart failed', err);
+            if (cta) {
+                cta.textContent = 'Erro ao adicionar';
+                setTimeout(function () { cta.textContent = originalText; }, 1200);
+            }
+        }
     }
 
     function bindCardPlus(product, plusBtn) {
@@ -194,7 +268,7 @@
             e.stopPropagation();
 
             if (!product.is_simple || product.has_addons) {
-                if (typeof window.navigateTo === 'function') window.navigateTo('product-screen');
+                openProduct(product.id);
                 return;
             }
 
@@ -228,6 +302,7 @@
 
         products.forEach(function (product) {
             const card = templateCard.cloneNode(true);
+            card.dataset.productId = String(product.id || '');
 
             const img = card.querySelector('img');
             if (img) {
@@ -251,7 +326,7 @@
 
             card.onclick = null;
             card.addEventListener('click', function () {
-                if (typeof window.navigateTo === 'function') window.navigateTo('product-screen');
+                openProduct(product.id);
             });
 
             const plusBtn = card.querySelector('button');
@@ -294,7 +369,7 @@
             const appRoot = getAppRoot();
             if (appRoot && !appRoot.classList.contains('rop-ready')) {
                 appRoot.classList.add('rop-ready');
-            appRoot.classList.add('rop-ready-cats');
+                appRoot.classList.add('rop-ready-cats');
                 if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
             }
         }
@@ -484,6 +559,188 @@
                 renderHomeCategoryChips(appRoot, homeScreen);
                 resetAndLoadProducts(homeScreen);
             });
+        }
+    }
+
+    function getProductQtyElements(appRoot) {
+        const productScreen = getProductScreen(appRoot);
+        if (!productScreen) return { minusBtn: null, plusBtn: null, qtyEl: null };
+
+        const qtyWrapper = productScreen.querySelector('.flex.items-center.gap-4.bg-gray-50.p-2.rounded-2xl.border.border-gray-100');
+        const buttons = qtyWrapper ? qtyWrapper.querySelectorAll('button') : [];
+
+        return {
+            minusBtn: buttons[0] || null,
+            plusBtn: buttons[1] || null,
+            qtyEl: qtyWrapper ? qtyWrapper.querySelector('span') : null,
+        };
+    }
+
+    function getProductCta(appRoot) {
+        const productScreen = getProductScreen(appRoot);
+        if (!productScreen) return null;
+        const checkoutBar = productScreen.querySelector('.checkout-bar');
+        if (!checkoutBar) return null;
+        return checkoutBar.querySelector('button');
+    }
+
+    function getProductPriceBox(appRoot) {
+        const productScreen = getProductScreen(appRoot);
+        if (!productScreen) return null;
+        const checkoutBar = productScreen.querySelector('.checkout-bar');
+        if (!checkoutBar) return null;
+        return checkoutBar.querySelector('div');
+    }
+
+    function getExtrasContainer(appRoot) {
+        const productScreen = getProductScreen(appRoot);
+        if (!productScreen) return null;
+
+        const headings = productScreen.querySelectorAll('h3');
+        let extrasHeading = null;
+        headings.forEach(function (h) {
+            if (h.textContent && h.textContent.toLowerCase().indexOf('adicionar extras') !== -1) {
+                extrasHeading = h;
+            }
+        });
+
+        if (!extrasHeading) return null;
+        const scope = extrasHeading.parentElement;
+        if (!scope) return null;
+
+        return scope.querySelector('.space-y-4');
+    }
+
+    function collectExtras(appRoot) {
+        const container = getExtrasContainer(appRoot);
+        if (!container) return {};
+
+        const extras = {};
+        const fields = container.querySelectorAll('input, select, textarea');
+
+        fields.forEach(function (field) {
+            const key = field.name || field.id || field.getAttribute('data-name');
+            if (!key) return;
+
+            if (field.type === 'checkbox') {
+                if (!extras[key]) extras[key] = [];
+                if (field.checked) extras[key].push(field.value || '1');
+                return;
+            }
+
+            if (field.type === 'radio') {
+                if (field.checked) extras[key] = field.value || '';
+                return;
+            }
+
+            extras[key] = field.value || '';
+        });
+
+        return extras;
+    }
+
+    function updateProductQtyUI(appRoot) {
+        const elems = getProductQtyElements(appRoot);
+        if (elems.qtyEl) {
+            elems.qtyEl.textContent = String(state.productQty);
+        }
+    }
+
+    function bindProductScreenControls(appRoot) {
+        const elems = getProductQtyElements(appRoot);
+
+        if (elems.minusBtn) {
+            elems.minusBtn.onclick = null;
+            elems.minusBtn.addEventListener('click', function () {
+                state.productQty = Math.max(1, state.productQty - 1);
+                updateProductQtyUI(appRoot);
+            });
+        }
+
+        if (elems.plusBtn) {
+            elems.plusBtn.onclick = null;
+            elems.plusBtn.addEventListener('click', function () {
+                state.productQty = Math.min(99, state.productQty + 1);
+                updateProductQtyUI(appRoot);
+            });
+        }
+
+        const cta = getProductCta(appRoot);
+        if (cta) {
+            cta.onclick = null;
+            cta.addEventListener('click', function (e) {
+                e.preventDefault();
+                addCurrentProductToCart(appRoot);
+            });
+        }
+    }
+
+    function renderProductScreen(appRoot, product) {
+        const productScreen = getProductScreen(appRoot);
+        if (!productScreen) return;
+
+        const image = productScreen.querySelector('.product-image-container img');
+        if (image && product.image) {
+            image.src = product.image;
+            image.alt = product.name || image.alt;
+        }
+
+        const title = productScreen.querySelector('h2');
+        if (title) title.textContent = product.name || 'Produto';
+
+        const description = productScreen.querySelector('p.text-gray-500');
+        if (description) description.innerText = product.description || 'Sem descrição disponível.';
+
+        const ratingText = productScreen.querySelector('.text-gray-800.text-sm.font-bold');
+        if (ratingText && typeof product.rating !== 'undefined') {
+            const ratingValue = Number(product.rating || 0).toFixed(1);
+            ratingText.textContent = ratingValue;
+        }
+
+        const priceBox = getProductPriceBox(appRoot);
+        if (priceBox) {
+            priceBox.textContent = priceText(product);
+        }
+
+        const extrasContainer = getExtrasContainer(appRoot);
+        if (extrasContainer) {
+            extrasContainer.innerHTML = '';
+            if (product.barn2_html) {
+                extrasContainer.innerHTML = product.barn2_html;
+            }
+        }
+
+        state.productQty = 1;
+        updateProductQtyUI(appRoot);
+        bindProductScreenControls(appRoot);
+
+        if (window.lucide && typeof window.lucide.createIcons === 'function') {
+            window.lucide.createIcons();
+        }
+    }
+
+    async function openProduct(productId) {
+        const appRoot = getAppRoot();
+        if (!appRoot) return;
+
+        if (typeof window.navigateTo === 'function') {
+            window.navigateTo('product-screen');
+        }
+
+        setProductLoading(appRoot, true);
+
+        try {
+            const response = await ropFetch('rop_get_product', { product_id: productId });
+            if (!response || !response.success || !response.data) {
+                return;
+            }
+
+            state.currentProduct = response.data;
+            renderProductScreen(appRoot, response.data);
+        } catch (err) {
+            console.warn('ROP get product failed', err);
+        } finally {
+            setProductLoading(appRoot, false);
         }
     }
 
