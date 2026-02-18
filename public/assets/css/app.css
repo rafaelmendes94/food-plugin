@@ -396,7 +396,7 @@ body.rop-delivery-page footer:not(.rop-app footer) {
 
 /* v1.7.0 checkout/cart polish */
 .rop-app #checkout-screen {
-    padding-bottom: 140px;
+    padding-bottom: 120px;
 }
 
 .rop-app [data-rop-checkout-notice="1"] {
@@ -404,4 +404,16 @@ body.rop-delivery-page footer:not(.rop-app footer) {
     border: 1px solid #fecaca;
     border-radius: 12px;
     margin: 12px;
+}
+
+
+.rop-app .rop-cart-state {
+    text-align: center;
+    font-size: 13px;
+    color: #9ca3af;
+    padding: 28px 8px;
+}
+
+.rop-app .rop-cart-state--error {
+    color: #ef4444;
 }

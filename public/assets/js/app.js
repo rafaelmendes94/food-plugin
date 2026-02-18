@@ -26,6 +26,22 @@
         fulfillment: 'delivery',
     };
 
+
+
+    const ROP_Checkout = {
+        controller: null,
+        destroy(appRoot) {
+            if (this.controller) {
+                this.controller.abort();
+                this.controller = null;
+            }
+            const screen = appRoot ? appRoot.querySelector('#checkout-screen') : document.getElementById('checkout-screen');
+            if (screen) {
+                screen.innerHTML = '';
+            }
+        },
+    };
+
     async function ropFetch(action, data) {
         if (!window.ropAjax || !window.ropAjax.url || !window.ropAjax.nonce) {
             throw new Error('ropAjax config ausente');
@@ -783,27 +799,41 @@
 
 
     async function fetchCartData() {
-        try {
-            const response = await ropFetch('rop_cart_get');
-            if (response && response.success && response.data) {
-                return response.data;
-            }
-        } catch (err) {
-            console.warn('ROP cart_get failed', err);
+        const response = await ropFetch('rop_cart_get');
+        if (response && response.success && response.data) {
+            return response.data;
         }
 
-        return {
-            items: [],
-            coupons: [],
-            totals: {
-                subtotal_html: 'R$ 0,00',
-                shipping_html: '—',
-                discount_html: 'R$ 0,00',
-                total_html: 'R$ 0,00',
-            },
-            count: 0,
-            total_raw: 0,
-        };
+        throw new Error('cart_get_failed');
+    }
+
+    function renderCartError(list, message, retryFn) {
+        if (!list) return;
+        list.innerHTML = '<div class="text-center text-sm text-red-500 py-8">' + (message || 'Erro ao carregar carrinho.') + '</div>'
+            + '<div class="text-center"><button type="button" data-rop-cart-retry class="bg-red-500 text-white px-4 py-2 rounded-xl text-xs font-bold">Tentar novamente</button></div>';
+        const retry = list.querySelector('[data-rop-cart-retry]');
+        if (retry && retryFn) {
+            retry.onclick = retryFn;
+        }
+    }
+
+    function updateCartTotalsUI(modal, data) {
+        if (!modal) return;
+        const summaryRows = modal.querySelectorAll('.space-y-3 .flex.justify-between');
+        const totalRow = modal.querySelector('.space-y-3 .text-xl.font-bold.text-gray-800');
+
+        if (summaryRows[0]) {
+            summaryRows[0].innerHTML = '<span>Subtotal</span><span>' + ((data.totals && data.totals.subtotal_html) || 'R$ 0,00') + '</span>';
+        }
+
+        if (summaryRows[1]) {
+            const shippingTxt = ((data.totals && data.totals.shipping_html) || 'Grátis') || 'Grátis';
+            summaryRows[1].innerHTML = '<span>Entrega</span><span class="text-green-500">' + shippingTxt + '</span>';
+        }
+
+        if (totalRow) {
+            totalRow.innerHTML = '<span>Total</span><span>' + ((data.totals && data.totals.total_html) || 'R$ 0,00') + '</span>';
+        }
     }
 
     async function renderCartModal(appRoot) {
@@ -814,10 +844,18 @@
         const couponInput = modal.querySelector('input[placeholder="Cupom"]');
         const applyBtn = modal.querySelector('button.bg-red-500.text-white.px-6.rounded-2xl.font-bold.text-sm.shadow-md.hover\:bg-red-600.transition-colors');
 
-        const summaryRows = modal.querySelectorAll('.space-y-3 .flex.justify-between');
-        const totalRow = modal.querySelector('.space-y-3 .text-xl.font-bold.text-gray-800');
+        if (list) {
+            list.innerHTML = '<div class="text-center text-sm text-gray-400 py-8">Carregando carrinho...</div>';
+        }
 
-        const data = await fetchCartData();
+        let data;
+        try {
+            data = await fetchCartData();
+        } catch (err) {
+            renderCartError(list, 'Não foi possível carregar o carrinho.', function () { renderCartModal(appRoot); });
+            updateCartTotalsUI(modal, { totals: {} });
+            return;
+        }
 
         if (list) {
             list.innerHTML = '';
@@ -828,62 +866,41 @@
                     const row = document.createElement('div');
                     row.className = 'flex gap-4 items-center group';
                     row.innerHTML = ''
-                        + '<div class="w-20 h-20 bg-gray-50 rounded-2xl p-2 flex items-center justify-center shrink-0 border border-gray-100"><img src="' + (item.image || '') + '" class="w-full h-full object-contain"></div>'
+                        + '<div class="w-20 h-20 bg-gray-50 rounded-2xl p-2 flex items-center justify-center shrink-0 border border-gray-100"><img src="' + (item.image_url || '') + '" class="w-full h-full object-contain"></div>'
                         + '<div class="flex-1">'
                         + '<div class="flex justify-between items-start mb-1">'
                         + '<h3 class="font-bold text-gray-800 text-sm leading-tight">' + (item.name || 'Item') + '</h3>'
-                        + '<button type="button" data-remove="' + (item.key || item.cart_item_key || '') + '" class="text-gray-300 hover:text-red-500 transition-colors"><i data-lucide="trash-2" class="w-4 h-4"></i></button>'
+                        + '<button type="button" data-remove="' + (item.key || '') + '" class="text-gray-300 hover:text-red-500 transition-colors"><i data-lucide="trash-2" class="w-4 h-4"></i></button>'
                         + '</div>'
                         + '<p class="text-xs text-gray-400 mb-2">' + ((item.extras_text || '').trim() || '—') + '</p>'
                         + '<div class="flex justify-between items-center">'
-                        + '<span class="font-bold text-red-500 text-sm">' + (item.line_total_html || item.price_html || 'R$ 0,00') + '</span>'
+                        + '<span class="font-bold text-red-500 text-sm">' + (item.line_total_html || 'R$ 0,00') + '</span>'
                         + '<div class="flex items-center gap-2 bg-gray-50 px-2 py-1 rounded-xl border border-gray-100">'
-                        + '<button type="button" data-qty="' + (item.key || item.cart_item_key || '') + '" data-action="minus" class="cart-qty-btn bg-white shadow-sm text-gray-400 hover:text-gray-600"><i data-lucide="minus" class="w-3 h-3"></i></button>'
+                        + '<button type="button" data-qty="' + (item.key || '') + '" data-action="minus" class="cart-qty-btn bg-white shadow-sm text-gray-400 hover:text-gray-600"><i data-lucide="minus" class="w-3 h-3"></i></button>'
                         + '<span class="text-sm font-bold w-4 text-center text-gray-800">' + Number(item.qty || 1) + '</span>'
-                        + '<button type="button" data-qty="' + (item.key || item.cart_item_key || '') + '" data-action="plus" class="cart-qty-btn bg-red-500 shadow-md text-white hover:bg-red-600"><i data-lucide="plus" class="w-3 h-3"></i></button>'
+                        + '<button type="button" data-qty="' + (item.key || '') + '" data-action="plus" class="cart-qty-btn bg-red-500 shadow-md text-white hover:bg-red-600"><i data-lucide="plus" class="w-3 h-3"></i></button>'
                         + '</div></div></div>';
                     list.appendChild(row);
                 });
             }
         }
 
-        if (summaryRows[0]) {
-            summaryRows[0].innerHTML = '<span>Subtotal</span><span>' + ((data.totals && data.totals.subtotal_html) || 'R$ 0,00') + '</span>';
-        }
-
-        if (summaryRows[1]) {
-            summaryRows[1].innerHTML = '<span>Entrega</span><span class="text-green-500">' + ((data.totals && data.totals.shipping_html) || '—') + '</span>';
-        }
-
-        if (totalRow) {
-            totalRow.innerHTML = '<span>Total</span><span>' + ((data.totals && data.totals.total_html) || 'R$ 0,00') + '</span>';
-        }
-
         if (couponInput) {
             couponInput.value = (Array.isArray(data.coupons) && data.coupons[0]) ? data.coupons[0] : '';
         }
 
-        if (applyBtn && !applyBtn.dataset.boundCoupon) {
-            applyBtn.dataset.boundCoupon = '1';
-            applyBtn.addEventListener('click', async function () {
-                const code = couponInput ? (couponInput.value || '') : '';
-                const res = await ropFetch('rop_cart_apply_coupon', { code: code });
-                if (!res || !res.success) {
-                    showHomeAddFeedback(appRoot, 'Cupom inválido');
-                } else {
-                    showHomeAddFeedback(appRoot, 'Cupom aplicado');
-                }
-                await renderCartModal(appRoot);
-                await refreshCartSummary(appRoot);
-            });
-        }
+        updateCartTotalsUI(modal, data);
 
         if (list) {
             list.querySelectorAll('[data-remove]').forEach(function (btn) {
                 btn.onclick = async function () {
-                    await ropFetch('rop_cart_remove', { cart_item_key: btn.getAttribute('data-remove') || '' });
-                    await renderCartModal(appRoot);
-                    await refreshCartSummary(appRoot);
+                    try {
+                        await ropFetch('rop_cart_remove', { key: btn.getAttribute('data-remove') || '' });
+                        await renderCartModal(appRoot);
+                        await refreshCartSummary(appRoot);
+                    } catch (err) {
+                        renderCartError(list, 'Falha ao remover item.', function () { renderCartModal(appRoot); });
+                    }
                 };
             });
 
@@ -893,11 +910,32 @@
                     const action = btn.getAttribute('data-action') || 'plus';
                     const currentEl = btn.parentElement ? btn.parentElement.querySelector('span') : null;
                     const currentQty = Number((currentEl && currentEl.textContent) || 1);
-                    const nextQty = action === 'minus' ? Math.max(0, currentQty - 1) : Math.min(99, currentQty + 1);
-                    await ropFetch('rop_cart_set_qty', { cart_item_key: key, qty: nextQty });
+                    const nextQty = action === 'minus' ? Math.max(1, currentQty - 1) : Math.min(99, currentQty + 1);
+                    try {
+                        await ropFetch('rop_cart_set_qty', { key: key, qty: nextQty });
+                        await renderCartModal(appRoot);
+                        await refreshCartSummary(appRoot);
+                    } catch (err) {
+                        renderCartError(list, 'Falha ao atualizar quantidade.', function () { renderCartModal(appRoot); });
+                    }
+                };
+            });
+        }
+
+        if (applyBtn && !applyBtn.dataset.boundCoupon) {
+            applyBtn.dataset.boundCoupon = '1';
+            applyBtn.addEventListener('click', async function () {
+                const code = couponInput ? (couponInput.value || '') : '';
+                try {
+                    const res = await ropFetch('rop_cart_apply_coupon', { code: code });
+                    if (res && res.success) showHomeAddFeedback(appRoot, 'Cupom aplicado');
+                    else showHomeAddFeedback(appRoot, 'Cupom inválido');
                     await renderCartModal(appRoot);
                     await refreshCartSummary(appRoot);
-                };
+                } catch (err) {
+                    showHomeAddFeedback(appRoot, 'Cupom inválido');
+                    renderCartError(list, 'Falha ao aplicar cupom.', function () { renderCartModal(appRoot); });
+                }
             });
         }
 
@@ -919,13 +957,14 @@
         }
 
         const modal = document.getElementById('cart-modal');
-        if (modal) {
+        if (modal && !modal.dataset.ropObserved) {
             const observer = new MutationObserver(function () {
                 if (!modal.classList.contains('hidden')) {
                     renderCartModal(appRoot);
                 }
             });
             observer.observe(modal, { attributes: true, attributeFilter: ['class'] });
+            modal.dataset.ropObserved = '1';
         }
     }
 
@@ -1614,13 +1653,23 @@
                 el.classList.add('hidden');
             }
         });
+
+        if (screenId !== 'checkout-screen') {
+            ROP_Checkout.destroy(getAppRoot());
+        }
+
         window.scrollTo(0, 0);
     }
 
     function bindCheckoutForm(appRoot, checkoutScreen) {
         const form = checkoutScreen ? checkoutScreen.querySelector('form.checkout') : null;
-        if (!form || form.dataset.ropBound === '1') return;
-        form.dataset.ropBound = '1';
+        if (!form) return;
+
+        if (ROP_Checkout.controller) {
+            ROP_Checkout.controller.abort();
+        }
+        ROP_Checkout.controller = new AbortController();
+        const signal = ROP_Checkout.controller.signal;
 
         form.addEventListener('submit', async function (e) {
             e.preventDefault();
@@ -1635,6 +1684,8 @@
                     payload[key] = value;
                 }
             });
+
+            payload.rop_fulfillment = state.fulfillment || 'delivery';
 
             const res = await ropFetch('rop_place_order', { form: JSON.stringify(payload) });
             if (!res || !res.success) {
@@ -1661,55 +1712,53 @@
                 }
             }
 
+            ROP_Checkout.destroy(appRoot);
+            showScreenFallback('home-screen');
+
             try {
                 const orders = await ropFetch('rop_orders_list');
                 renderOrdersScreen(appRoot, (orders && orders.success && orders.data && orders.data.orders) ? orders.data.orders : []);
             } catch (err) {
                 console.warn('ROP orders refresh failed', err);
             }
-        });
-    }
-
-    function renderOrdersScreen(appRoot, orders) {
-        const screen = appRoot.querySelector('#orders-screen');
-        if (!screen) return;
-        const list = screen.querySelector('.px-6.pb-32.space-y-5') || screen.querySelector('.px-6.pb-32');
-        if (!list) return;
-
-        if (!Array.isArray(orders) || !orders.length) {
-            list.innerHTML = '<div class="bg-white rounded-[24px] p-5 shadow-sm border border-gray-100 text-sm text-gray-400">Nenhum pedido ainda.</div>';
-            return;
-        }
-
-        list.innerHTML = '';
-        orders.forEach(function (order) {
-            const card = document.createElement('div');
-            card.className = 'bg-white rounded-[24px] p-5 shadow-sm border border-gray-100 relative overflow-hidden';
-            const status = (order.status || '').toUpperCase();
-            card.innerHTML = ''
-                + '<div class="absolute top-0 right-0 bg-red-500 text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl">' + status + '</div>'
-                + '<div class="flex justify-between items-center mb-4"><div><span class="text-xs text-gray-400 font-medium">Pedido #' + (order.number || order.id || '') + '</span><h3 class="font-bold text-gray-800 text-lg">Foodgo Lanches</h3></div></div>'
-                + '<div class="flex justify-between items-end border-t border-gray-50 pt-4"><div class="text-sm text-gray-500">' + (order.total_html || 'R$ 0,00') + ' • ' + (order.date || '') + '</div></div>';
-            list.appendChild(card);
-        });
+        }, { signal: signal });
     }
 
     async function loadCheckoutScreen(appRoot) {
         const checkoutScreen = ensureCheckoutScreen(appRoot);
         if (!checkoutScreen) return;
 
-        checkoutScreen.innerHTML = '<div class="p-6 text-gray-500 text-sm">Carregando checkout...</div>';
+        ROP_Checkout.destroy(appRoot);
 
-        const response = await ropFetch('rop_checkout_html');
-        if (!response || !response.success || !response.data) {
-            checkoutScreen.innerHTML = '<div class="p-6 text-red-500 text-sm">Não foi possível carregar checkout.</div>';
-            return;
+        checkoutScreen.innerHTML = '<div class="p-4"><div class="flex items-center justify-between mb-3"><button type="button" data-rop-checkout-back class="bg-white border border-gray-100 rounded-xl px-3 py-2 text-sm font-semibold text-gray-700">Voltar</button><span class="text-sm font-bold text-gray-700">Checkout</span></div><div data-rop-checkout-content="1" class="p-2 text-gray-500 text-sm">Carregando checkout...</div></div>';
+
+        const backBtn = checkoutScreen.querySelector('[data-rop-checkout-back]');
+        if (backBtn) {
+            backBtn.onclick = function () {
+                ROP_Checkout.destroy(appRoot);
+                if (typeof window.navigateTo === 'function') {
+                    window.navigateTo('home-screen');
+                } else {
+                    showScreenFallback('home-screen');
+                }
+            };
         }
 
-        checkoutScreen.innerHTML = '<div class="p-4">' + String(response.data.html || '') + '</div>';
-        bindCheckoutForm(appRoot, checkoutScreen);
-        if (window.lucide && typeof window.lucide.createIcons === 'function') {
-            window.lucide.createIcons();
+        const content = checkoutScreen.querySelector('[data-rop-checkout-content="1"]');
+        try {
+            const response = await ropFetch('rop_checkout_html');
+            if (!response || !response.success || !response.data) {
+                if (content) content.innerHTML = '<div class="p-4 text-red-500 text-sm">Não foi possível carregar checkout.</div>';
+                return;
+            }
+
+            if (content) content.innerHTML = String(response.data.html || '');
+            bindCheckoutForm(appRoot, checkoutScreen);
+            if (window.lucide && typeof window.lucide.createIcons === 'function') {
+                window.lucide.createIcons();
+            }
+        } catch (e) {
+            if (content) content.innerHTML = '<div class="p-4 text-red-500 text-sm">Falha ao carregar checkout.</div>';
         }
     }
 
@@ -1780,6 +1829,9 @@
                     showScreenFallback('checkout-screen');
                 } else {
                     originalNavigate(screenId);
+                    if (screenId === 'home-screen') {
+                        ROP_Checkout.destroy(appRoot);
+                    }
                 }
 
                 if (screenId !== 'product-screen') {
@@ -1806,14 +1858,6 @@
                 if (!open) {
                     if (typeof window.openStoreClosedModal === 'function') window.openStoreClosedModal();
                     else openClosedModalFallback();
-                    return;
-                }
-
-                const productScreen = getProductScreen(appRoot);
-                const productVisible = productScreen && !productScreen.classList.contains('hidden');
-                if (productVisible && state.currentProduct) {
-                    const ok = await addCurrentProductToCart(appRoot, { stayOnProduct: true });
-                    if (ok) await goToCheckout(appRoot);
                     return;
                 }
 

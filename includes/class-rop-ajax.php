@@ -557,12 +557,13 @@ class ROP_Ajax
                 'coupons' => [],
                 'totals' => [
                     'subtotal_html' => 'R$ 0,00',
-                    'shipping_html' => '—',
+                    'shipping_html' => 'Grátis',
                     'discount_html' => 'R$ 0,00',
                     'total_html' => 'R$ 0,00',
                 ],
                 'count' => 0,
                 'total_raw' => 0,
+                'notices_html' => '',
             ]);
         }
 
@@ -573,9 +574,9 @@ class ROP_Ajax
                 continue;
             }
 
-            $image = $product->get_image_id() ? wp_get_attachment_image_url($product->get_image_id(), 'woocommerce_thumbnail') : '';
-            if (! $image) {
-                $image = wc_placeholder_img_src('woocommerce_thumbnail');
+            $image_url = $product->get_image_id() ? wp_get_attachment_image_url($product->get_image_id(), 'woocommerce_thumbnail') : '';
+            if (! $image_url) {
+                $image_url = wc_placeholder_img_src('woocommerce_thumbnail');
             }
 
             $qty = max(1, (int) ($item['quantity'] ?? 1));
@@ -598,36 +599,38 @@ class ROP_Ajax
 
             $items[] = [
                 'key' => sanitize_text_field($cart_item_key),
-                'cart_item_key' => sanitize_text_field($cart_item_key),
                 'product_id' => (int) ($item['product_id'] ?? 0),
                 'name' => sanitize_text_field($product->get_name()),
-                'image' => esc_url_raw($image),
+                'image_url' => esc_url_raw($image_url),
                 'qty' => $qty,
                 'unit_price_html' => wp_strip_all_tags(wc_price($unit_price)),
                 'line_total_html' => wp_strip_all_tags(wc_price($line_total)),
-                'unit_price' => $unit_price,
-                'line_total' => $line_total,
                 'extras_text' => implode(', ', array_values(array_unique($extras_list))),
-                'extras' => $extras,
             ];
         }
 
-        $discount = 0.0;
-        if (method_exists(WC()->cart, 'get_discount_total')) {
-            $discount = (float) WC()->cart->get_discount_total();
+        $discount = method_exists(WC()->cart, 'get_discount_total') ? (float) WC()->cart->get_discount_total() : 0.0;
+        $shipping = WC()->cart->get_cart_shipping_total();
+        $shipping_html = $shipping !== '' ? wp_strip_all_tags($shipping) : 'Grátis';
+
+        ob_start();
+        if (function_exists('wc_print_notices')) {
+            wc_print_notices();
         }
+        $notices_html = (string) ob_get_clean();
 
         wp_send_json_success([
             'items' => $items,
             'coupons' => array_values(array_map('sanitize_text_field', WC()->cart->get_applied_coupons())),
             'totals' => [
                 'subtotal_html' => wp_strip_all_tags(wc_price((float) WC()->cart->get_subtotal())),
-                'shipping_html' => wp_strip_all_tags(WC()->cart->get_cart_shipping_total() ?: 'Grátis'),
+                'shipping_html' => $shipping_html,
                 'discount_html' => wp_strip_all_tags(wc_price($discount)),
                 'total_html' => wp_strip_all_tags(WC()->cart->get_total()),
             ],
             'count' => (int) WC()->cart->get_cart_contents_count(),
             'total_raw' => (float) (method_exists(WC()->cart, 'get_total') ? WC()->cart->get_total('edit') : WC()->cart->total),
+            'notices_html' => wp_kses_post($notices_html),
         ]);
     }
 
@@ -640,19 +643,14 @@ class ROP_Ajax
             wp_send_json_error(['message' => 'Carrinho indisponível.'], 500);
         }
 
-        $key = sanitize_text_field(wp_unslash($_POST['cart_item_key'] ?? ''));
-        $qty = max(0, absint($_POST['qty'] ?? 1));
+        $key = sanitize_text_field(wp_unslash($_POST['key'] ?? ($_POST['cart_item_key'] ?? '')));
+        $qty = max(1, absint($_POST['qty'] ?? 1));
 
-        if ($key === '') {
+        if ($key === '' || ! WC()->cart->get_cart_item($key)) {
             wp_send_json_error(['message' => 'Item inválido.'], 400);
         }
 
-        if ($qty === 0) {
-            WC()->cart->remove_cart_item($key);
-        } else {
-            WC()->cart->set_quantity($key, $qty, true);
-        }
-
+        WC()->cart->set_quantity($key, $qty, true);
         self::cart_get();
     }
 
@@ -665,8 +663,8 @@ class ROP_Ajax
             wp_send_json_error(['message' => 'Carrinho indisponível.'], 500);
         }
 
-        $key = sanitize_text_field(wp_unslash($_POST['cart_item_key'] ?? ''));
-        if ($key === '') {
+        $key = sanitize_text_field(wp_unslash($_POST['key'] ?? ($_POST['cart_item_key'] ?? '')));
+        if ($key === '' || ! WC()->cart->get_cart_item($key)) {
             wp_send_json_error(['message' => 'Item inválido.'], 400);
         }
 
@@ -688,14 +686,9 @@ class ROP_Ajax
             wp_send_json_error(['message' => 'Informe um cupom.'], 400);
         }
 
-        $ok = WC()->cart->apply_coupon($code);
-        if (! $ok) {
-            wp_send_json_error(['message' => 'Cupom inválido.'], 400);
-        }
-
+        WC()->cart->apply_coupon($code);
         self::cart_get();
     }
-
 
     public static function cart_clear()
     {
