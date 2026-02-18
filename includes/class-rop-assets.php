@@ -27,6 +27,9 @@ class ROP_Assets
             true
         );
 
+        self::enqueue_delivery_woo_assets();
+        self::enqueue_delivery_barn2_assets();
+
         wp_localize_script('rop-app', 'ropAjax', [
             'url' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('rop_ajax'),
@@ -46,5 +49,76 @@ class ROP_Assets
         }
 
         return get_post_field('post_name', $queried_id) === 'delivery';
+    }
+
+    private static function enqueue_delivery_woo_assets()
+    {
+        $handles = [
+            'jquery',
+            'woocommerce',
+            'wc-add-to-cart',
+            'wc-add-to-cart-variation',
+        ];
+
+        foreach ($handles as $handle) {
+            if (wp_script_is($handle, 'registered')) {
+                wp_enqueue_script($handle);
+            }
+        }
+    }
+
+    private static function enqueue_delivery_barn2_assets()
+    {
+        if (! class_exists('ROP_Compat_Barn2') || ! ROP_Compat_Barn2::is_active()) {
+            return;
+        }
+
+        self::enqueue_registered_assets_by_pattern('scripts');
+        self::enqueue_registered_assets_by_pattern('styles');
+    }
+
+    private static function enqueue_registered_assets_by_pattern($type)
+    {
+        $patterns = ['barn2', 'wcpo', 'product-options'];
+
+        if ($type === 'scripts') {
+            global $wp_scripts;
+            if (! isset($wp_scripts->registered) || ! is_array($wp_scripts->registered)) {
+                return;
+            }
+
+            foreach (array_keys($wp_scripts->registered) as $handle) {
+                if (! is_string($handle)) {
+                    continue;
+                }
+
+                foreach ($patterns as $pattern) {
+                    if (strpos($handle, $pattern) !== false) {
+                        wp_enqueue_script($handle);
+                        break;
+                    }
+                }
+            }
+
+            return;
+        }
+
+        global $wp_styles;
+        if (! isset($wp_styles->registered) || ! is_array($wp_styles->registered)) {
+            return;
+        }
+
+        foreach (array_keys($wp_styles->registered) as $handle) {
+            if (! is_string($handle)) {
+                continue;
+            }
+
+            foreach ($patterns as $pattern) {
+                if (strpos($handle, $pattern) !== false) {
+                    wp_enqueue_style($handle);
+                    break;
+                }
+            }
+        }
     }
 }

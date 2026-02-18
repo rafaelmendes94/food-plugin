@@ -337,3 +337,40 @@ body.rop-delivery-page footer:not(.rop-app footer) {
 .rop-app .rop-woo-single .quantity > .rop-qty-ui {
     display: flex;
 }
+
+/* v1.5.0 shortcode embed styling */
+.rop-app .rop-woo-single {
+    margin-top: 16px;
+}
+
+.rop-app .rop-woo-single .product {
+    margin: 0;
+}
+
+.rop-app .rop-woo-single .woocommerce-product-gallery,
+.rop-app .rop-woo-single h1.product_title {
+    display: none !important;
+}
+
+.rop-app .rop-woo-single .price {
+    font-size: 20px;
+    font-weight: 800;
+    color: #111827;
+    margin: 8px 0 14px;
+}
+
+.rop-app .rop-woo-single button.single_add_to_cart_button {
+    width: 100%;
+    background: #EF4444;
+    color: #fff;
+    border: 0;
+    border-radius: 20px;
+    padding: 16px 18px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.rop-app #product-screen i[data-lucide="heart"] {
+    display: none !important;
+}

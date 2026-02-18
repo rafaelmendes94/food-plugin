@@ -921,7 +921,7 @@
             }
         }
 
-        const useEmbedded = !!(ropUseWooSingle && product && product.barn2_active);
+        const useEmbedded = !!(ropUseWooSingle && product && product.id);
 
         if (!useEmbedded) {
             wooWrap.innerHTML = '';
@@ -940,31 +940,42 @@
             setWooSingleMode(appRoot, contentWrap, true);
 
             const form = wooWrap.querySelector('form.cart');
-            if (form) {
-                form.onsubmit = async function (e) {
-                    e.preventDefault();
+            const qtyInput = form ? form.querySelector('input.qty') : null;
 
-                    const fd = new FormData(form);
-                    const payload = {};
-                    fd.forEach(function (v, k) {
-                        if (Object.prototype.hasOwnProperty.call(payload, k)) {
-                            if (!Array.isArray(payload[k])) payload[k] = [payload[k]];
-                            payload[k].push(v);
-                        } else {
-                            payload[k] = v;
-                        }
-                    });
-
-                    const res = await ropFetch('rop_add_to_cart_from_form', {
-                        product_id: product.id,
-                        form: JSON.stringify(payload),
-                    });
-
-                    if (res && res.success) {
-                        await refreshCartSummary(appRoot);
-                    }
-                };
+            if (!form) {
+                console.info('ROP: form.cart não encontrado no embed, usando fallback');
+                setBuyBlockAddVisibility(contentWrap, true);
+                setWooSingleMode(appRoot, contentWrap, false);
+                return;
             }
+
+            if (qtyInput) {
+                enhanceEmbeddedWooQty(wooWrap);
+            }
+
+            form.onsubmit = async function (e) {
+                e.preventDefault();
+
+                const fd = new FormData(form);
+                const payload = {};
+                fd.forEach(function (v, k) {
+                    if (Object.prototype.hasOwnProperty.call(payload, k)) {
+                        if (!Array.isArray(payload[k])) payload[k] = [payload[k]];
+                        payload[k].push(v);
+                    } else {
+                        payload[k] = v;
+                    }
+                });
+
+                const res = await ropFetch('rop_add_to_cart_from_form', {
+                    product_id: product.id,
+                    form: JSON.stringify(payload),
+                });
+
+                if (res && res.success) {
+                    await refreshCartSummary(appRoot);
+                }
+            };
 
             if (window.lucide && typeof window.lucide.createIcons === 'function') {
                 window.lucide.createIcons();
