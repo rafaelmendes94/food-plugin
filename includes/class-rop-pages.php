@@ -48,12 +48,13 @@ class ROP_Pages
 
     public static function render_foodgo_app()
     {
+        $settings = ROP_Store_Settings::get_all();
         $colors = ROP_Store_Settings::get_colors();
         $style = sprintf(
             '--rop-primary:%s;--rop-secondary:%s;--rop-dark:%s;',
-            esc_attr($colors['primary']),
-            esc_attr($colors['secondary']),
-            esc_attr($colors['dark'])
+            esc_attr($colors['primary'] ?: '#EF4444'),
+            esc_attr($colors['secondary'] ?: '#FFFFFF'),
+            esc_attr($colors['dark'] ?: '#2D2929')
         );
 
         ob_start();
@@ -61,6 +62,18 @@ class ROP_Pages
         $html = (string) ob_get_clean();
 
         $html = preg_replace('/<div\s+class="rop-app"\s+data-rop-app="1"/', '<div class="rop-app" data-rop-app="1" style="' . $style . '"', $html, 1);
+
+        $store_name = esc_html($settings['store_name'] ?: 'Foodgo');
+        $logo_url = esc_url($settings['logo_url'] ?? '');
+        if ($logo_url) {
+            $html = str_replace('<h1 class="text-3xl text-gray-800 logo-font">Foodgo</h1>', '<h1 class="text-3xl text-gray-800 logo-font"><img src="' . $logo_url . '" alt="' . $store_name . '" style="max-height:44px; width:auto; object-fit:contain;"/></h1>', $html);
+        } else {
+            $html = str_replace('<h1 class="text-3xl text-gray-800 logo-font">Foodgo</h1>', '<h1 class="text-3xl text-gray-800 logo-font">' . $store_name . '</h1>', $html);
+        }
+
+        $html = str_replace('overflow-x-auto no-scrollbar mb-6 pb-2', 'overflow-x-auto no-scrollbar mb-6 pb-2 rop-hidden-until-hydrated', $html);
+        $html = str_replace('grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 pb-32', 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 pb-32 rop-hidden-until-hydrated', $html);
+        $html = str_replace('id="filter-modal" class="hidden fixed inset-0 z-[150] h-full w-full modal-overlay"', 'id="filter-modal" class="hidden fixed inset-0 z-[150] h-full w-full modal-overlay rop-hidden-until-hydrated"', $html);
 
         return $html;
     }

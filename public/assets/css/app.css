@@ -417,3 +417,36 @@ body.rop-delivery-page footer:not(.rop-app footer) {
 .rop-app .rop-cart-state--error {
     color: #ef4444;
 }
+
+/* v1.7.4 instant theme + hydration */
+.rop-app .rop-hidden-until-hydrated {
+    visibility: hidden;
+}
+
+.rop-app.rop-hydrated .rop-hidden-until-hydrated {
+    visibility: visible;
+}
+
+.rop-app .nav-background,
+.rop-app .plus-button-floating,
+.rop-app .filter-chip.active,
+.rop-app .rop-qty-ui [data-rop-plus],
+.rop-app .cart-qty-btn.bg-red-500,
+.rop-app .bg-red-500,
+.rop-app button.single_add_to_cart_button {
+    background-color: var(--rop-primary, #EF4444) !important;
+}
+
+.rop-app .text-red-500,
+.rop-app .rop-extra-group-price,
+.rop-app .border-red-500 {
+    color: var(--rop-primary, #EF4444) !important;
+    border-color: var(--rop-primary, #EF4444) !important;
+}
+
+.rop-app .bg-\[\#2D2929\],
+.rop-app .checkout-bar button,
+.rop-app #store-closed-modal button,
+.rop-app #success-modal button {
+    background-color: var(--rop-dark, #2D2929) !important;
+}

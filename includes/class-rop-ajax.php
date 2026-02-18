@@ -49,6 +49,10 @@ class ROP_Ajax
         add_action('wp_ajax_nopriv_rop_place_order', [self::class, 'place_order']);
         add_action('wp_ajax_rop_orders_list', [self::class, 'orders_list']);
         add_action('wp_ajax_nopriv_rop_orders_list', [self::class, 'orders_list']);
+        add_action('wp_ajax_rop_account_get', [self::class, 'account_get']);
+        add_action('wp_ajax_nopriv_rop_account_get', [self::class, 'account_get']);
+        add_action('wp_ajax_rop_account_update', [self::class, 'account_update']);
+        add_action('wp_ajax_rop_order_details', [self::class, 'order_details']);
         add_action('wp_ajax_rop_render_single_product', [self::class, 'render_single_product']);
         add_action('wp_ajax_nopriv_rop_render_single_product', [self::class, 'render_single_product']);
         add_action('wp_ajax_rop_add_to_cart_from_form', [self::class, 'add_to_cart_from_form']);
@@ -619,6 +623,11 @@ class ROP_Ajax
         }
         $notices_html = (string) ob_get_clean();
 
+        $advanced = get_option('rop_advanced_settings', []);
+        if (! empty($advanced['debug_mode']) && class_exists('ROP_Logger') && method_exists('ROP_Logger', 'info')) {
+            ROP_Logger::info('cart_get', ['count' => (int) WC()->cart->get_cart_contents_count()]);
+        }
+
         wp_send_json_success([
             'items' => $items,
             'coupons' => array_values(array_map('sanitize_text_field', WC()->cart->get_applied_coupons())),
@@ -1055,15 +1064,119 @@ class ROP_Ajax
         ];
     }
 
+    public static function account_get()
+    {
+        check_ajax_referer('rop_ajax', 'nonce');
+
+        if (! is_user_logged_in()) {
+            wp_send_json_success(['logged_in' => false]);
+        }
+
+        $user = wp_get_current_user();
+
+        wp_send_json_success([
+            'logged_in' => true,
+            'account' => [
+                'display_name' => sanitize_text_field($user->display_name),
+                'email' => sanitize_email($user->user_email),
+                'billing_first_name' => sanitize_text_field(get_user_meta($user->ID, 'billing_first_name', true)),
+                'billing_last_name' => sanitize_text_field(get_user_meta($user->ID, 'billing_last_name', true)),
+                'billing_phone' => sanitize_text_field(get_user_meta($user->ID, 'billing_phone', true)),
+                'billing_address_1' => sanitize_text_field(get_user_meta($user->ID, 'billing_address_1', true)),
+                'billing_address_2' => sanitize_text_field(get_user_meta($user->ID, 'billing_address_2', true)),
+                'billing_city' => sanitize_text_field(get_user_meta($user->ID, 'billing_city', true)),
+                'billing_postcode' => sanitize_text_field(get_user_meta($user->ID, 'billing_postcode', true)),
+            ],
+        ]);
+    }
+
+    public static function account_update()
+    {
+        check_ajax_referer('rop_ajax', 'nonce');
+
+        if (! is_user_logged_in()) {
+            wp_send_json_error(['message' => 'Faça login para salvar seus dados.'], 401);
+        }
+
+        $user_id = get_current_user_id();
+        $fields = [
+            'billing_first_name',
+            'billing_last_name',
+            'billing_phone',
+            'billing_address_1',
+            'billing_address_2',
+            'billing_city',
+            'billing_postcode',
+        ];
+
+        foreach ($fields as $field) {
+            $value = sanitize_text_field(wp_unslash($_POST[$field] ?? ''));
+            update_user_meta($user_id, $field, $value);
+        }
+
+        wp_send_json_success(['message' => 'Salvo com sucesso.']);
+    }
+
+    public static function order_details()
+    {
+        check_ajax_referer('rop_ajax', 'nonce');
+
+        if (! is_user_logged_in()) {
+            wp_send_json_error(['message' => 'Faça login para ver pedidos.'], 401);
+        }
+
+        $order_id = absint($_POST['order_id'] ?? 0);
+        $order = $order_id ? wc_get_order($order_id) : false;
+
+        if (! $order instanceof WC_Order || (int) $order->get_customer_id() !== (int) get_current_user_id()) {
+            wp_send_json_error(['message' => 'Pedido não encontrado.'], 404);
+        }
+
+        $items = [];
+        foreach ($order->get_items() as $item) {
+            if (! $item instanceof WC_Order_Item_Product) {
+                continue;
+            }
+            $items[] = [
+                'name' => sanitize_text_field($item->get_name()),
+                'qty' => (int) $item->get_quantity(),
+                'total_html' => wp_strip_all_tags(wc_price((float) $item->get_total())),
+            ];
+        }
+
+        wp_send_json_success([
+            'order' => [
+                'id' => $order->get_id(),
+                'number' => $order->get_order_number(),
+                'status' => sanitize_text_field($order->get_status()),
+                'date' => $order->get_date_created() ? $order->get_date_created()->date_i18n('d/m H:i') : '',
+                'total_html' => wp_strip_all_tags($order->get_formatted_order_total()),
+                'address' => wp_kses_post($order->get_formatted_billing_address()),
+                'items' => $items,
+            ],
+        ]);
+    }
+
     private static function ensure_cart_loaded()
     {
-        if (function_exists('WC')) {
-            if (null === WC()->session && method_exists(WC(), 'initialize_session')) {
-                WC()->initialize_session();
-            }
-            if (null === WC()->cart) {
-                wc_load_cart();
-            }
+        if (! function_exists('WC')) {
+            return;
+        }
+
+        if (function_exists('wc_load_cart')) {
+            wc_load_cart();
+        }
+
+        if (null === WC()->session && method_exists(WC(), 'initialize_session')) {
+            WC()->initialize_session();
+        }
+
+        if (null === WC()->cart && method_exists(WC(), 'initialize_cart')) {
+            WC()->initialize_cart();
+        }
+
+        if (null === WC()->cart && function_exists('wc_load_cart')) {
+            wc_load_cart();
         }
     }
 }

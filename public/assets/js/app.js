@@ -514,6 +514,7 @@
             if (appRoot && !appRoot.classList.contains('rop-ready')) {
                 appRoot.classList.add('rop-ready');
                 appRoot.classList.add('rop-ready-cats');
+                appRoot.classList.add('rop-hydrated');
                 if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
             }
         }
@@ -809,7 +810,7 @@
 
     function renderCartError(list, message, retryFn) {
         if (!list) return;
-        list.innerHTML = '<div class="text-center text-sm text-red-500 py-8">' + (message || 'Erro ao carregar carrinho.') + '</div>'
+        list.innerHTML = '<div class="rop-cart-state rop-cart-state--error">' + (message || 'Erro ao carregar carrinho.') + '</div>'
             + '<div class="text-center"><button type="button" data-rop-cart-retry class="bg-red-500 text-white px-4 py-2 rounded-xl text-xs font-bold">Tentar novamente</button></div>';
         const retry = list.querySelector('[data-rop-cart-retry]');
         if (retry && retryFn) {
@@ -840,12 +841,15 @@
         const modal = document.getElementById('cart-modal');
         if (!modal) return;
 
-        const list = modal.querySelector('.flex-1.overflow-y-auto.p-6.space-y-6');
+        const list = modal.querySelector('#cart-modal .flex-1.overflow-y-auto') || modal.querySelector('.flex-1.overflow-y-auto') || modal.querySelector('.flex-1');
         const couponInput = modal.querySelector('input[placeholder="Cupom"]');
         const applyBtn = modal.querySelector('button.bg-red-500.text-white.px-6.rounded-2xl.font-bold.text-sm.shadow-md.hover\:bg-red-600.transition-colors');
 
         if (list) {
-            list.innerHTML = '<div class="text-center text-sm text-gray-400 py-8">Carregando carrinho...</div>';
+            list.innerHTML = '<div class="rop-cart-state">Carregando carrinho...</div>';
+        } else {
+            console.error('ROP cart list container not found');
+            return;
         }
 
         let data;
@@ -860,7 +864,7 @@
         if (list) {
             list.innerHTML = '';
             if (!Array.isArray(data.items) || !data.items.length) {
-                list.innerHTML = '<div class="text-center text-sm text-gray-400 py-10">Seu carrinho está vazio.</div>';
+                list.innerHTML = '<div class="rop-cart-state">Seu carrinho está vazio.</div><div class="text-center"><button type="button" data-rop-open-menu class="bg-red-500 text-white px-4 py-2 rounded-xl text-xs font-bold">Ver cardápio</button></div>';
             } else {
                 data.items.forEach(function (item) {
                     const row = document.createElement('div');
@@ -890,6 +894,21 @@
         }
 
         updateCartTotalsUI(modal, data);
+
+
+        if (list) {
+            const openMenuBtn = list.querySelector('[data-rop-open-menu]');
+            if (openMenuBtn) {
+                openMenuBtn.onclick = function () {
+                    if (typeof window.toggleModal === 'function') {
+                        window.toggleModal('cart-modal');
+                    }
+                    if (typeof window.navigateTo === 'function') {
+                        window.navigateTo('home-screen');
+                    }
+                };
+            }
+        }
 
         if (list) {
             list.querySelectorAll('[data-remove]').forEach(function (btn) {
@@ -1568,6 +1587,7 @@
         state.selectedVariationId = 0;
         state.selectedAttributes = {};
         appRoot.classList.remove('rop-ready-product');
+        appRoot.classList.remove('rop-hydrated');
 
         if (typeof window.navigateTo === 'function') {
             window.navigateTo('product-screen');
@@ -1626,6 +1646,100 @@
         bindFilterModal(appRoot, homeScreen);
         bindInfiniteScroll(homeScreen);
         resetAndLoadProducts(homeScreen);
+    }
+
+
+    async function loadAccountScreen(appRoot) {
+        const screen = appRoot ? appRoot.querySelector('#account-screen') : null;
+        if (!screen) return;
+
+        const area = screen.querySelector('.p-6') || screen;
+        area.innerHTML = '<div class="rop-cart-state">Carregando conta...</div>';
+
+        try {
+            const res = await ropFetch('rop_account_get');
+            if (!res || !res.success || !res.data || !res.data.logged_in) {
+                area.innerHTML = '<div class="rop-cart-state">Faça login para gerenciar sua conta.</div>';
+                return;
+            }
+
+            const a = res.data.account || {};
+            area.innerHTML = ''
+                + '<div class="bg-white rounded-[24px] p-5 border border-gray-100 space-y-3">'
+                + '<input data-rop-account="billing_first_name" class="custom-input" placeholder="Nome" value="' + (a.billing_first_name || '') + '">'
+                + '<input data-rop-account="billing_last_name" class="custom-input" placeholder="Sobrenome" value="' + (a.billing_last_name || '') + '">'
+                + '<input data-rop-account="billing_phone" class="custom-input" placeholder="Telefone" value="' + (a.billing_phone || '') + '">'
+                + '<input data-rop-account="billing_address_1" class="custom-input" placeholder="Rua e número" value="' + (a.billing_address_1 || '') + '">'
+                + '<input data-rop-account="billing_address_2" class="custom-input" placeholder="Complemento" value="' + (a.billing_address_2 || '') + '">'
+                + '<input data-rop-account="billing_city" class="custom-input" placeholder="Cidade" value="' + (a.billing_city || '') + '">'
+                + '<input data-rop-account="billing_postcode" class="custom-input" placeholder="CEP" value="' + (a.billing_postcode || '') + '">'
+                + '<button type="button" data-rop-account-save class="w-full bg-red-500 text-white rounded-2xl py-3 font-bold">Salvar</button>'
+                + '</div>';
+
+            const saveBtn = area.querySelector('[data-rop-account-save]');
+            if (saveBtn) {
+                saveBtn.onclick = async function () {
+                    const payload = {};
+                    area.querySelectorAll('[data-rop-account]').forEach(function (el) {
+                        payload[el.getAttribute('data-rop-account')] = el.value || '';
+                    });
+                    const up = await ropFetch('rop_account_update', payload);
+                    showHomeAddFeedback(appRoot, (up && up.success) ? 'Salvo' : 'Erro ao salvar');
+                };
+            }
+        } catch (err) {
+            area.innerHTML = '<div class="rop-cart-state rop-cart-state--error">Erro ao carregar conta.</div>';
+        }
+    }
+
+    function renderOrdersScreen(appRoot, orders) {
+        const screen = appRoot.querySelector('#orders-screen');
+        if (!screen) return;
+        const list = screen.querySelector('.px-6.pb-32.space-y-5') || screen.querySelector('.px-6.pb-32') || screen;
+
+        if (!Array.isArray(orders) || !orders.length) {
+            list.innerHTML = '<div class="bg-white rounded-[24px] p-5 shadow-sm border border-gray-100 text-sm text-gray-400">Você ainda não fez pedidos.</div>';
+            return;
+        }
+
+        list.innerHTML = '';
+        orders.forEach(function (order) {
+            const card = document.createElement('div');
+            card.className = 'bg-white rounded-[24px] p-5 shadow-sm border border-gray-100 relative overflow-hidden';
+            const status = (order.status || '').toUpperCase();
+            card.innerHTML = ''
+                + '<div class="absolute top-0 right-0 bg-red-500 text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl">' + status + '</div>'
+                + '<div class="flex justify-between items-center mb-4"><div><span class="text-xs text-gray-400 font-medium">Pedido #' + (order.number || order.id || '') + '</span><h3 class="font-bold text-gray-800 text-lg">' + ((state.store && state.store.store_name) || 'Pedido') + '</h3></div></div>'
+                + '<div class="flex justify-between items-end border-t border-gray-50 pt-4"><div class="text-sm text-gray-500">' + (order.total_html || 'R$ 0,00') + ' • ' + (order.date || '') + '</div><button type="button" data-rop-order-detail="' + (order.id || '') + '" class="text-red-500 text-xs font-bold">Detalhes</button></div>';
+            list.appendChild(card);
+        });
+
+        list.querySelectorAll('[data-rop-order-detail]').forEach(function (btn) {
+            btn.onclick = async function () {
+                const id = btn.getAttribute('data-rop-order-detail') || '';
+                const modal = document.getElementById('order-details-modal');
+                if (!modal) return;
+                const content = modal.querySelector('.modal-content');
+                if (!content) return;
+                content.innerHTML = '<div class="p-6 text-sm text-gray-500">Carregando pedido...</div>';
+                if (typeof window.toggleModal === 'function') window.toggleModal('order-details-modal');
+
+                try {
+                    const res = await ropFetch('rop_order_details', { order_id: id });
+                    if (!res || !res.success || !res.data || !res.data.order) {
+                        content.innerHTML = '<div class="p-6 text-sm text-red-500">Não foi possível carregar o pedido.</div>';
+                        return;
+                    }
+                    const o = res.data.order;
+                    const items = Array.isArray(o.items) ? o.items.map(function (it) {
+                        return '<div class="flex justify-between text-sm py-1"><span>' + it.name + ' x' + it.qty + '</span><span>' + it.total_html + '</span></div>';
+                    }).join('') : '';
+                    content.innerHTML = '<div class="p-6"><h2 class="text-xl font-bold mb-2">Pedido #' + (o.number || o.id) + '</h2><p class="text-xs text-gray-500 mb-3">' + (o.date || '') + ' • ' + (o.status || '') + '</p><div class="border-t border-gray-100 pt-2">' + items + '</div><div class="mt-3 text-sm"><strong>Total:</strong> ' + (o.total_html || 'R$ 0,00') + '</div><div class="mt-2 text-xs text-gray-500">' + (o.address || '') + '</div></div>';
+                } catch (e) {
+                    content.innerHTML = '<div class="p-6 text-sm text-red-500">Erro ao carregar pedido.</div>';
+                }
+            };
+        });
     }
 
 
@@ -1818,6 +1932,7 @@
         appRoot.classList.remove('rop-ready');
         appRoot.classList.remove('rop-ready-cats');
         appRoot.classList.remove('rop-ready-product');
+        appRoot.classList.remove('rop-hydrated');
 
         const homeScreen = getHomeScreen(appRoot);
         if (homeScreen) prepareHomeContainers(homeScreen);
@@ -1843,8 +1958,14 @@
                     ropFetch('rop_orders_list').then(function (res) {
                         if (res && res.success && res.data && Array.isArray(res.data.orders)) {
                             renderOrdersScreen(appRoot, res.data.orders);
+                        } else {
+                            renderOrdersScreen(appRoot, []);
                         }
-                    }).catch(function () {});
+                    }).catch(function () { renderOrdersScreen(appRoot, []); });
+                }
+
+                if (screenId === 'account-screen') {
+                    loadAccountScreen(appRoot);
                 }
 
                 updateFloatingButtonVisibility(appRoot);
@@ -1880,6 +2001,7 @@
             console.warn('ROP home boot failed', err);
             appRoot.classList.add('rop-ready');
             appRoot.classList.add('rop-ready-cats');
+            appRoot.classList.add('rop-hydrated');
             if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
         }
     });
