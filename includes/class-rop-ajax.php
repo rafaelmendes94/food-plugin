@@ -28,6 +28,16 @@ class ROP_Ajax
         add_action('wp_ajax_nopriv_rop_add_to_cart', [self::class, 'add_to_cart']);
         add_action('wp_ajax_rop_get_cart_summary', [self::class, 'get_cart_summary']);
         add_action('wp_ajax_nopriv_rop_get_cart_summary', [self::class, 'get_cart_summary']);
+        add_action('wp_ajax_rop_cart_get', [self::class, 'cart_get']);
+        add_action('wp_ajax_nopriv_rop_cart_get', [self::class, 'cart_get']);
+        add_action('wp_ajax_rop_cart_set_qty', [self::class, 'cart_set_qty']);
+        add_action('wp_ajax_nopriv_rop_cart_set_qty', [self::class, 'cart_set_qty']);
+        add_action('wp_ajax_rop_cart_remove', [self::class, 'cart_remove']);
+        add_action('wp_ajax_nopriv_rop_cart_remove', [self::class, 'cart_remove']);
+        add_action('wp_ajax_rop_cart_apply_coupon', [self::class, 'cart_apply_coupon']);
+        add_action('wp_ajax_nopriv_rop_cart_apply_coupon', [self::class, 'cart_apply_coupon']);
+        add_action('wp_ajax_rop_cart_summary', [self::class, 'cart_summary']);
+        add_action('wp_ajax_nopriv_rop_cart_summary', [self::class, 'cart_summary']);
         add_action('wp_ajax_rop_render_single_product', [self::class, 'render_single_product']);
         add_action('wp_ajax_nopriv_rop_render_single_product', [self::class, 'render_single_product']);
         add_action('wp_ajax_rop_add_to_cart_from_form', [self::class, 'add_to_cart_from_form']);
@@ -460,6 +470,155 @@ class ROP_Ajax
             'total_html' => wp_kses_post($total_html),
             'total_raw' => $total_raw,
         ]);
+    }
+
+
+    public static function cart_summary()
+    {
+        self::get_cart_summary();
+    }
+
+    public static function cart_get()
+    {
+        check_ajax_referer('rop_ajax', 'nonce');
+        self::ensure_cart_loaded();
+
+        if (! function_exists('WC') || ! WC()->cart) {
+            wp_send_json_success([
+                'items' => [],
+                'count' => 0,
+                'subtotal_html' => 'R$ 0,00',
+                'shipping_html' => '—',
+                'total_html' => 'R$ 0,00',
+                'coupon' => '',
+            ]);
+        }
+
+        $items = [];
+        foreach (WC()->cart->get_cart() as $cart_item_key => $item) {
+            $product = isset($item['data']) && $item['data'] instanceof WC_Product ? $item['data'] : null;
+            if (! $product) {
+                continue;
+            }
+
+            $image = $product->get_image_id() ? wp_get_attachment_image_url($product->get_image_id(), 'woocommerce_thumbnail') : '';
+            if (! $image) {
+                $image = wc_placeholder_img_src('woocommerce_thumbnail');
+            }
+
+            $extras = $item['rop_extras'] ?? ($item['rop_barn2_raw'] ?? []);
+            $extras_list = [];
+            if (is_array($extras)) {
+                foreach ($extras as $value) {
+                    if (is_array($value)) {
+                        foreach ($value as $nested) {
+                            $txt = sanitize_text_field((string) $nested);
+                            if ($txt !== '') {
+                                $extras_list[] = $txt;
+                            }
+                        }
+                    } else {
+                        $txt = sanitize_text_field((string) $value);
+                        if ($txt !== '') {
+                            $extras_list[] = $txt;
+                        }
+                    }
+                }
+            }
+
+            $line_total = isset($item['line_total']) ? (float) $item['line_total'] : (float) $product->get_price() * (int) ($item['quantity'] ?? 1);
+
+            $items[] = [
+                'cart_item_key' => sanitize_text_field($cart_item_key),
+                'product_id' => (int) ($item['product_id'] ?? 0),
+                'name' => sanitize_text_field($product->get_name()),
+                'qty' => max(1, (int) ($item['quantity'] ?? 1)),
+                'image' => esc_url_raw($image),
+                'price_html' => wp_strip_all_tags(wc_price((float) $product->get_price())),
+                'line_total_html' => wp_strip_all_tags(wc_price($line_total)),
+                'extras_text' => implode(', ', array_values(array_unique($extras_list))),
+            ];
+        }
+
+        $coupon = '';
+        $applied = WC()->cart->get_applied_coupons();
+        if (! empty($applied)) {
+            $coupon = sanitize_text_field((string) $applied[0]);
+        }
+
+        wp_send_json_success([
+            'items' => $items,
+            'count' => (int) WC()->cart->get_cart_contents_count(),
+            'subtotal_html' => wp_strip_all_tags(wc_price((float) WC()->cart->get_subtotal())),
+            'shipping_html' => wp_strip_all_tags(WC()->cart->get_cart_shipping_total() ?: 'Grátis'),
+            'total_html' => wp_strip_all_tags(WC()->cart->get_total()),
+            'coupon' => $coupon,
+        ]);
+    }
+
+    public static function cart_set_qty()
+    {
+        check_ajax_referer('rop_ajax', 'nonce');
+        self::ensure_cart_loaded();
+
+        if (! function_exists('WC') || ! WC()->cart) {
+            wp_send_json_error(['message' => 'Carrinho indisponível.'], 500);
+        }
+
+        $key = sanitize_text_field(wp_unslash($_POST['cart_item_key'] ?? ''));
+        $qty = max(0, absint($_POST['qty'] ?? 1));
+
+        if ($key === '') {
+            wp_send_json_error(['message' => 'Item inválido.'], 400);
+        }
+
+        if ($qty === 0) {
+            WC()->cart->remove_cart_item($key);
+        } else {
+            WC()->cart->set_quantity($key, $qty, true);
+        }
+
+        self::cart_get();
+    }
+
+    public static function cart_remove()
+    {
+        check_ajax_referer('rop_ajax', 'nonce');
+        self::ensure_cart_loaded();
+
+        if (! function_exists('WC') || ! WC()->cart) {
+            wp_send_json_error(['message' => 'Carrinho indisponível.'], 500);
+        }
+
+        $key = sanitize_text_field(wp_unslash($_POST['cart_item_key'] ?? ''));
+        if ($key === '') {
+            wp_send_json_error(['message' => 'Item inválido.'], 400);
+        }
+
+        WC()->cart->remove_cart_item($key);
+        self::cart_get();
+    }
+
+    public static function cart_apply_coupon()
+    {
+        check_ajax_referer('rop_ajax', 'nonce');
+        self::ensure_cart_loaded();
+
+        if (! function_exists('WC') || ! WC()->cart) {
+            wp_send_json_error(['message' => 'Carrinho indisponível.'], 500);
+        }
+
+        $code = sanitize_text_field(wp_unslash($_POST['code'] ?? ''));
+        if ($code === '') {
+            wp_send_json_error(['message' => 'Informe um cupom.'], 400);
+        }
+
+        $ok = WC()->cart->apply_coupon($code);
+        if (! $ok) {
+            wp_send_json_error(['message' => 'Cupom inválido.'], 400);
+        }
+
+        self::cart_get();
     }
 
     public static function render_single_product()

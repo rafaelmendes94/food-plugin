@@ -25,6 +25,7 @@ class ROP_Admin_Pages
         $current = [
             'id' => '',
             'name' => '',
+            'category_ids' => [],
             'groups' => [],
         ];
 
@@ -33,6 +34,18 @@ class ROP_Admin_Pages
                 $current = $preset;
                 break;
             }
+        }
+
+
+        $categories = get_terms([
+            'taxonomy' => 'product_cat',
+            'hide_empty' => false,
+            'orderby' => 'name',
+            'order' => 'ASC',
+        ]);
+
+        if (is_wp_error($categories) || ! is_array($categories)) {
+            $categories = [];
         }
 
         include ROP_PATH . 'views/page-extras.php';
@@ -49,6 +62,9 @@ class ROP_Admin_Pages
             $groups_json = wp_unslash($_POST['preset_groups_json'] ?? '[]');
             $groups_decoded = json_decode($groups_json, true);
             $groups = ROP_Extras::sanitize_groups(is_array($groups_decoded) ? $groups_decoded : []);
+            $category_ids = isset($_POST['preset_category_ids']) && is_array($_POST['preset_category_ids'])
+                ? array_values(array_unique(array_map('absint', wp_unslash($_POST['preset_category_ids']))))
+                : [];
 
             if ($name === '' || empty($groups)) {
                 add_settings_error('rop_extras', 'rop_extras_invalid', __('Preencha nome e grupos do preset.', 'restaurant-ops-pro'), 'error');
@@ -64,6 +80,7 @@ class ROP_Admin_Pages
                 if ($preset['id'] === $preset_id) {
                     $preset['name'] = $name;
                     $preset['groups'] = $groups;
+                    $preset['category_ids'] = $category_ids;
                     $updated = true;
                     break;
                 }
@@ -74,6 +91,7 @@ class ROP_Admin_Pages
                 $presets[] = [
                     'id' => $preset_id,
                     'name' => $name,
+                    'category_ids' => $category_ids,
                     'groups' => $groups,
                 ];
             }

@@ -13,10 +13,16 @@ class ROP_Assets
             return;
         }
 
-        if ($hook !== 'toplevel_page_rop-dashboard' && $hook !== 'rop-dashboard_page_rop-extras' && $hook !== 'rop-dashboard_page_rop-dashboard') {
-            if (strpos((string) $hook, 'rop-extras') === false) {
-                return;
-            }
+        $is_rop_admin = in_array($hook, ['toplevel_page_rop-dashboard', 'rop-dashboard_page_rop-extras', 'rop-dashboard_page_rop-dashboard'], true)
+            || strpos((string) $hook, 'rop-extras') !== false;
+
+        $is_product_editor = in_array($hook, ['post.php', 'post-new.php'], true) && isset($_GET['post_type']) && sanitize_key((string) $_GET['post_type']) === 'product';
+        if (in_array($hook, ['post.php', 'post-new.php'], true) && isset($_GET['post'])) {
+            $is_product_editor = get_post_type(absint($_GET['post'])) === 'product';
+        }
+
+        if (! $is_rop_admin && ! $is_product_editor) {
+            return;
         }
 
         wp_enqueue_style(

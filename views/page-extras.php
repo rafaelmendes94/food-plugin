@@ -52,6 +52,17 @@ if (! defined('ABSPATH')) {
                     <input type="text" id="preset_name" name="preset_name" class="regular-text" value="<?php echo esc_attr($current['name']); ?>" required>
                 </p>
 
+
+                <p><strong><?php esc_html_e('Aplicar automaticamente nestas categorias', 'restaurant-ops-pro'); ?></strong></p>
+                <div class="rop-categories-grid">
+                    <?php foreach ($categories as $category) : ?>
+                        <label>
+                            <input type="checkbox" name="preset_category_ids[]" value="<?php echo esc_attr($category->term_id); ?>" <?php checked(in_array((int) $category->term_id, array_map('intval', $current['category_ids'] ?? []), true)); ?> />
+                            <?php echo esc_html($category->name); ?>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+
                 <div id="rop-preset-editor" data-initial="<?php echo esc_attr(wp_json_encode($current['groups'])); ?>"></div>
 
                 <p>

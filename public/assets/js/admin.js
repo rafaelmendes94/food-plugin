@@ -42,6 +42,7 @@
 
     function readGroups(editor) {
         const groups = [];
+
         editor.querySelectorAll('.rop-preset-group').forEach(function (groupEl) {
             const title = (groupEl.querySelector('.rop-group-title') || {}).value || '';
             const type = (groupEl.querySelector('.rop-group-type') || {}).value || 'checkbox';
@@ -65,11 +66,11 @@
         return groups;
     }
 
-    document.addEventListener('DOMContentLoaded', function () {
-        const form = document.getElementById('rop-preset-form');
-        const editor = document.getElementById('rop-preset-editor');
-        const addGroup = document.getElementById('rop-add-group');
-        const output = document.getElementById('preset_groups_json');
+    function initializeEditor(config) {
+        const form = document.getElementById(config.formId);
+        const editor = document.getElementById(config.editorId);
+        const addGroup = document.getElementById(config.addButtonId);
+        const output = document.getElementById(config.outputId);
 
         if (!form || !editor || !addGroup || !output) {
             return;
@@ -110,6 +111,22 @@
 
         form.addEventListener('submit', function () {
             output.value = JSON.stringify(readGroups(editor));
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        initializeEditor({
+            formId: 'rop-preset-form',
+            editorId: 'rop-preset-editor',
+            addButtonId: 'rop-add-group',
+            outputId: 'preset_groups_json',
+        });
+
+        initializeEditor({
+            formId: 'post',
+            editorId: 'rop-product-extras-editor',
+            addButtonId: 'rop-product-add-group',
+            outputId: 'rop_product_extras_schema_json',
         });
     });
 })();

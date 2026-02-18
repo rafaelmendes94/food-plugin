@@ -383,3 +383,13 @@ body.rop-delivery-page footer:not(.rop-app footer) {
 .rop-app.rop-woo-single-active [data-rop-extrasblock="1"] {
     display: none !important;
 }
+
+/* v1.6.3 cart/extras UX */
+.rop-app [data-rop-toast="1"] {
+    backdrop-filter: blur(4px);
+}
+
+.rop-app .rop-barn2-scope .rop-extra-group-price {
+    color: #ef4444;
+    font-weight: 700;
+}

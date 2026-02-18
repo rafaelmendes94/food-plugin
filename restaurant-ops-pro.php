@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Restaurant Ops Pro
  * Description: Operação de delivery para restaurantes com interface Foodgo.
- * Version: 1.6.2
+ * Version: 1.6.3
  * Author: Restaurant Ops Pro
  * Text Domain: restaurant-ops-pro
  */
@@ -11,7 +11,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-define('ROP_VERSION', '1.6.2');
+define('ROP_VERSION', '1.6.3');
 define('ROP_FILE', __FILE__);
 define('ROP_PATH', plugin_dir_path(__FILE__));
 define('ROP_URL', plugin_dir_url(__FILE__));

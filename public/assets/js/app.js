@@ -696,7 +696,7 @@
 
         let total = 'R$ 0,00';
         try {
-            const response = await ropFetch('rop_get_cart_summary');
+            const response = await ropFetch('rop_cart_summary');
             if (response && response.success && response.data) {
                 total = stripTags(response.data.total_html || '') || total;
             }
@@ -710,10 +710,155 @@
             if (typeof window.toggleModal === 'function') {
                 window.toggleModal('cart-modal');
             }
+            renderCartModal(appRoot);
         };
 
         if (window.lucide && typeof window.lucide.createIcons === 'function') {
             window.lucide.createIcons();
+        }
+    }
+
+
+    async function fetchCartData() {
+        try {
+            const response = await ropFetch('rop_cart_get');
+            if (response && response.success && response.data) {
+                return response.data;
+            }
+        } catch (err) {
+            console.warn('ROP cart_get failed', err);
+        }
+
+        return {
+            items: [],
+            count: 0,
+            subtotal_html: 'R$ 0,00',
+            shipping_html: '—',
+            total_html: 'R$ 0,00',
+            coupon: '',
+        };
+    }
+
+    async function renderCartModal(appRoot) {
+        const modal = document.getElementById('cart-modal');
+        if (!modal) return;
+
+        const list = modal.querySelector('.flex-1.overflow-y-auto.p-6.space-y-6');
+        const couponInput = modal.querySelector('input[placeholder="Cupom"]');
+        const applyBtn = modal.querySelector('button.bg-red-500.text-white.px-6.rounded-2xl.font-bold.text-sm.shadow-md.hover\:bg-red-600.transition-colors');
+
+        const summaryRows = modal.querySelectorAll('.space-y-3 .flex.justify-between');
+        const totalRow = modal.querySelector('.space-y-3 .text-xl.font-bold.text-gray-800');
+
+        const data = await fetchCartData();
+
+        if (list) {
+            list.innerHTML = '';
+            if (!Array.isArray(data.items) || !data.items.length) {
+                list.innerHTML = '<div class="text-center text-sm text-gray-400 py-10">Seu carrinho está vazio.</div>';
+            } else {
+                data.items.forEach(function (item) {
+                    const row = document.createElement('div');
+                    row.className = 'flex gap-4 items-center group';
+                    row.innerHTML = ''
+                        + '<div class="w-20 h-20 bg-gray-50 rounded-2xl p-2 flex items-center justify-center shrink-0 border border-gray-100"><img src="' + (item.image || '') + '" class="w-full h-full object-contain"></div>'
+                        + '<div class="flex-1">'
+                        + '<div class="flex justify-between items-start mb-1">'
+                        + '<h3 class="font-bold text-gray-800 text-sm leading-tight">' + (item.name || 'Item') + '</h3>'
+                        + '<button type="button" data-remove="' + (item.cart_item_key || '') + '" class="text-gray-300 hover:text-red-500 transition-colors"><i data-lucide="trash-2" class="w-4 h-4"></i></button>'
+                        + '</div>'
+                        + '<p class="text-xs text-gray-400 mb-2">' + ((item.extras_text || '').trim() || '—') + '</p>'
+                        + '<div class="flex justify-between items-center">'
+                        + '<span class="font-bold text-red-500 text-sm">' + (item.line_total_html || item.price_html || 'R$ 0,00') + '</span>'
+                        + '<div class="flex items-center gap-2 bg-gray-50 px-2 py-1 rounded-xl border border-gray-100">'
+                        + '<button type="button" data-qty="' + (item.cart_item_key || '') + '" data-action="minus" class="cart-qty-btn bg-white shadow-sm text-gray-400 hover:text-gray-600"><i data-lucide="minus" class="w-3 h-3"></i></button>'
+                        + '<span class="text-sm font-bold w-4 text-center text-gray-800">' + Number(item.qty || 1) + '</span>'
+                        + '<button type="button" data-qty="' + (item.cart_item_key || '') + '" data-action="plus" class="cart-qty-btn bg-red-500 shadow-md text-white hover:bg-red-600"><i data-lucide="plus" class="w-3 h-3"></i></button>'
+                        + '</div></div></div>';
+                    list.appendChild(row);
+                });
+            }
+        }
+
+        if (summaryRows[0]) {
+            summaryRows[0].innerHTML = '<span>Subtotal</span><span>' + (data.subtotal_html || 'R$ 0,00') + '</span>';
+        }
+
+        if (summaryRows[1]) {
+            summaryRows[1].innerHTML = '<span>Entrega</span><span class="text-green-500">' + (data.shipping_html || '—') + '</span>';
+        }
+
+        if (totalRow) {
+            totalRow.innerHTML = '<span>Total</span><span>' + (data.total_html || 'R$ 0,00') + '</span>';
+        }
+
+        if (couponInput) {
+            couponInput.value = data.coupon || '';
+        }
+
+        if (applyBtn && !applyBtn.dataset.boundCoupon) {
+            applyBtn.dataset.boundCoupon = '1';
+            applyBtn.addEventListener('click', async function () {
+                const code = couponInput ? (couponInput.value || '') : '';
+                const res = await ropFetch('rop_cart_apply_coupon', { code: code });
+                if (!res || !res.success) {
+                    showHomeAddFeedback(appRoot, 'Cupom inválido');
+                } else {
+                    showHomeAddFeedback(appRoot, 'Cupom aplicado');
+                }
+                await renderCartModal(appRoot);
+                await refreshCartSummary(appRoot);
+            });
+        }
+
+        if (list) {
+            list.querySelectorAll('[data-remove]').forEach(function (btn) {
+                btn.onclick = async function () {
+                    await ropFetch('rop_cart_remove', { cart_item_key: btn.getAttribute('data-remove') || '' });
+                    await renderCartModal(appRoot);
+                    await refreshCartSummary(appRoot);
+                };
+            });
+
+            list.querySelectorAll('[data-qty]').forEach(function (btn) {
+                btn.onclick = async function () {
+                    const key = btn.getAttribute('data-qty') || '';
+                    const action = btn.getAttribute('data-action') || 'plus';
+                    const currentEl = btn.parentElement ? btn.parentElement.querySelector('span') : null;
+                    const currentQty = Number((currentEl && currentEl.textContent) || 1);
+                    const nextQty = action === 'minus' ? Math.max(0, currentQty - 1) : Math.min(99, currentQty + 1);
+                    await ropFetch('rop_cart_set_qty', { cart_item_key: key, qty: nextQty });
+                    await renderCartModal(appRoot);
+                    await refreshCartSummary(appRoot);
+                };
+            });
+        }
+
+        if (window.lucide && typeof window.lucide.createIcons === 'function') {
+            window.lucide.createIcons();
+        }
+    }
+
+    function bindCartOpenTriggers(appRoot) {
+        const floating = getFloatingPlusButton(appRoot);
+        if (floating) {
+            floating.onclick = function (e) {
+                e.preventDefault();
+                if (typeof window.toggleModal === 'function') {
+                    window.toggleModal('cart-modal');
+                }
+                renderCartModal(appRoot);
+            };
+        }
+
+        const modal = document.getElementById('cart-modal');
+        if (modal) {
+            const observer = new MutationObserver(function () {
+                if (!modal.classList.contains('hidden')) {
+                    renderCartModal(appRoot);
+                }
+            });
+            observer.observe(modal, { attributes: true, attributeFilter: ['class'] });
         }
     }
 
@@ -1198,9 +1343,74 @@
         state.selectedAttributes = {};
 
         extrasBlock.innerHTML = '';
-        if (product.barn2_html || (product.is_variable && Array.isArray(product.variable_attributes) && product.variable_attributes.length)) {
+        const effectiveSchema = Array.isArray(product.rop_extras_schema) ? product.rop_extras_schema : [];
+        const hasLegacyExtras = !!product.barn2_html || (product.is_variable && Array.isArray(product.variable_attributes) && product.variable_attributes.length);
+
+        if (hasLegacyExtras || effectiveSchema.length) {
             extrasBlock.innerHTML = '<div class="mb-3"><h3 class="font-bold text-gray-800 text-lg mb-4">Adicionar Extras</h3><div class="space-y-4 rop-barn2-scope"></div></div>';
             const extrasScope = extrasBlock.querySelector('.rop-barn2-scope');
+
+            if (extrasScope && effectiveSchema.length) {
+                effectiveSchema.forEach(function (group, gIndex) {
+                    const box = document.createElement('div');
+                    box.className = 'bg-gray-50 border border-gray-100 rounded-2xl p-3';
+
+                    const title = document.createElement('p');
+                    title.className = 'text-xs font-bold text-gray-500 uppercase tracking-wide mb-2';
+                    title.textContent = group.title || 'Grupo';
+                    box.appendChild(title);
+
+                    const type = group.type || 'checkbox';
+                    const options = Array.isArray(group.options) ? group.options : [];
+
+                    if (type === 'select') {
+                        const select = document.createElement('select');
+                        select.className = 'custom-input';
+                        select.style.paddingLeft = '16px';
+                        select.name = 'rop_extra_' + gIndex;
+                        select.innerHTML = '<option value="">Selecione</option>';
+                        options.forEach(function (option) {
+                            const op = document.createElement('option');
+                            op.value = option.label || '';
+                            op.textContent = (option.label || '') + ' (+ ' + formatBRL(option.price || 0) + ')';
+                            op.dataset.price = String(option.price || 0);
+                            select.appendChild(op);
+                        });
+                        box.appendChild(select);
+                    } else {
+                        options.forEach(function (option, oIndex) {
+                            const label = document.createElement('label');
+                            label.className = 'flex justify-between items-center cursor-pointer p-2 rounded-xl hover:bg-white';
+
+                            const left = document.createElement('span');
+                            left.className = 'text-sm text-gray-700';
+                            left.textContent = option.label || '';
+
+                            const right = document.createElement('span');
+                            right.className = 'text-sm font-bold text-red-500';
+                            right.textContent = '+ ' + formatBRL(option.price || 0);
+
+                            const input = document.createElement('input');
+                            input.type = type === 'radio' ? 'radio' : 'checkbox';
+                            input.name = type === 'radio' ? ('rop_extra_' + gIndex) : ('rop_extra_' + gIndex + '[]');
+                            input.value = option.label || '';
+                            input.dataset.price = String(option.price || 0);
+                            input.style.marginRight = '8px';
+
+                            const leftWrap = document.createElement('span');
+                            leftWrap.className = 'flex items-center';
+                            leftWrap.appendChild(input);
+                            leftWrap.appendChild(left);
+
+                            label.appendChild(leftWrap);
+                            label.appendChild(right);
+                            box.appendChild(label);
+                        });
+                    }
+
+                    extrasScope.appendChild(box);
+                });
+            }
 
             if (extrasScope && product.is_variable && Array.isArray(product.variable_attributes) && product.variable_attributes.length) {
                 renderVariationSelectors(extrasScope, product, appRoot, productScreen);
@@ -1211,8 +1421,24 @@
                 wrap.innerHTML = product.barn2_html;
                 extrasScope.appendChild(wrap);
             }
-        }
 
+            if (extrasScope) {
+                extrasScope.addEventListener('change', function () {
+                    const priceEl = buyBlock.querySelector('[data-rop-product-price]');
+                    if (!priceEl) return;
+
+                    const base = Number(product.price || 0);
+                    let extrasTotal = 0;
+                    extrasScope.querySelectorAll('input[type="checkbox"]:checked, input[type="radio"]:checked, select option:checked').forEach(function (field) {
+                        extrasTotal += Number((field.dataset && field.dataset.price) || 0);
+                    });
+
+                    const finalValue = base + extrasTotal;
+                    priceEl.textContent = formatBRL(finalValue);
+                    setProductMetaPrice(productScreen, { formatted_price: formatBRL(finalValue), price_html: formatBRL(finalValue) }, null);
+                });
+            }
+        }
         bindProductScreenControls(appRoot);
         refreshCartSummary(appRoot);
 
@@ -1373,6 +1599,7 @@
 
         appRoot.classList.add('rop-ready-product');
         updateFloatingButtonVisibility(appRoot);
+        bindCartOpenTriggers(appRoot);
         refreshCartSummary(appRoot);
 
         try {
