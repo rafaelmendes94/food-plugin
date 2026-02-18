@@ -13,6 +13,9 @@ class ROP_Ajax
         add_action('wp_ajax_rop_get_store_status', [self::class, 'get_store_status']);
         add_action('wp_ajax_nopriv_rop_get_store_status', [self::class, 'get_store_status']);
 
+        add_action('wp_ajax_rop_app_bootstrap', [self::class, 'app_bootstrap']);
+        add_action('wp_ajax_nopriv_rop_app_bootstrap', [self::class, 'app_bootstrap']);
+
         add_action('wp_ajax_rop_list_categories', [self::class, 'list_categories']);
         add_action('wp_ajax_nopriv_rop_list_categories', [self::class, 'list_categories']);
         add_action('wp_ajax_rop_list_products', [self::class, 'list_products']);
@@ -70,6 +73,63 @@ class ROP_Ajax
             'human_status' => sanitize_text_field(ROP_Hours::human_status()),
             'next_open_time' => sanitize_text_field(ROP_Hours::next_open_time()),
         ]);
+    }
+
+    public static function app_bootstrap()
+    {
+        check_ajax_referer('rop_ajax', 'nonce');
+
+        $cache_key = 'rop_app_bootstrap_v1';
+        $cached = get_transient($cache_key);
+        if (is_array($cached)) {
+            wp_send_json_success($cached);
+        }
+
+        $store = ROP_Store_Settings::get_all();
+        $hours = [
+            'is_open' => (bool) ROP_Hours::is_open(),
+            'human_status' => sanitize_text_field(ROP_Hours::human_status()),
+            'next_open_time' => sanitize_text_field(ROP_Hours::next_open_time()),
+            'schedule' => ROP_Hours::schedule_for_display(),
+        ];
+        [$eta_min, $eta_max] = ROP_ETA::get_eta_range();
+
+        $checkout_settings = ROP_Delivery_Toggle::get_settings();
+        $ops = wp_parse_args(get_option('rop_ops_settings', []), [
+            'kitchen_priority' => 'delivery_first',
+            'kitchen_sound_enabled_default' => 1,
+            'kitchen_poll_interval_sec' => 5,
+            'auto_print_on_approve' => 0,
+            'default_ticket_format' => '80mm',
+        ]);
+
+        $payload = [
+            'store' => $store,
+            'hours' => $hours,
+            'eta' => [
+                'min' => (int) $eta_min,
+                'max' => (int) $eta_max,
+                'text' => sanitize_text_field(ROP_ETA::get_eta_text()),
+            ],
+            'checkout' => [
+                'pickup_enabled' => (int) $checkout_settings['pickup_enabled'],
+                'labels' => [
+                    'delivery' => sanitize_text_field($checkout_settings['label_delivery']),
+                    'pickup' => sanitize_text_field($checkout_settings['label_pickup']),
+                ],
+                'default_fulfillment' => sanitize_key($checkout_settings['default_fulfillment']),
+            ],
+            'ops' => [
+                'priority' => sanitize_key($ops['kitchen_priority']),
+                'kitchen_poll_interval_sec' => (int) $ops['kitchen_poll_interval_sec'],
+                'auto_print_on_approve' => ! empty($ops['auto_print_on_approve']) ? 1 : 0,
+                'default_ticket_format' => sanitize_text_field($ops['default_ticket_format']),
+            ],
+        ];
+
+        set_transient($cache_key, $payload, MINUTE_IN_SECONDS);
+
+        wp_send_json_success($payload);
     }
 
     public static function list_categories()

@@ -13,8 +13,7 @@ class ROP_Assets
             return;
         }
 
-        $is_rop_admin = in_array($hook, ['toplevel_page_rop-dashboard', 'rop-dashboard_page_rop-extras', 'rop-dashboard_page_rop-dashboard'], true)
-            || strpos((string) $hook, 'rop-extras') !== false;
+        $is_rop_admin = strpos((string) $hook, 'rop-') !== false || strpos((string) $hook, 'toplevel_page_rop-store') !== false;
 
         $is_product_editor = in_array($hook, ['post.php', 'post-new.php'], true) && isset($_GET['post_type']) && sanitize_key((string) $_GET['post_type']) === 'product';
         if (in_array($hook, ['post.php', 'post-new.php'], true) && isset($_GET['post'])) {
@@ -39,6 +38,8 @@ class ROP_Assets
             ROP_VERSION,
             true
         );
+
+        wp_enqueue_media();
     }
 
     public static function enqueue_public_assets()

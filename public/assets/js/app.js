@@ -22,6 +22,8 @@
         selectedVariationId: 0,
         selectedAttributes: {},
         embedMessageBound: false,
+        bootstrap: null,
+        fulfillment: 'delivery',
     };
 
     async function ropFetch(action, data) {
@@ -141,6 +143,63 @@
         if (!p) return;
         const base = 'Estamos fechados no momento. Navegue pelo cardápio!';
         p.textContent = humanStatus ? (base + ' ' + humanStatus) : base;
+    }
+
+    function updateEtaTexts(appRoot, etaText) {
+        if (!appRoot || !etaText) return;
+        appRoot.querySelectorAll('p,span,div').forEach(function (el) {
+            var txt = (el.textContent || '').trim();
+            if (!txt) return;
+            if (/^(26\s*mins?|previsão)/i.test(txt)) {
+                el.textContent = 'Previsão: ' + etaText + ' min';
+            }
+        });
+    }
+
+    function renderInfoScreen(appRoot, bootstrap) {
+        var info = appRoot ? appRoot.querySelector('#info-screen') : null;
+        if (!info || !bootstrap) return;
+
+        var store = bootstrap.store || {};
+        var hours = bootstrap.hours || {};
+        var list = Array.isArray(hours.schedule) ? hours.schedule : [];
+        var rows = list.map(function (r) {
+            return '<div class="flex justify-between py-2 border-b border-gray-100 text-sm"><span class="font-medium text-gray-700">' + (r.day || '') + '</span><span class="text-gray-500">' + (r.text || '') + '</span></div>';
+        }).join('');
+
+        info.innerHTML = ''
+            + '<div class="p-6 pb-32">'
+            + '<div class="bg-white rounded-[24px] p-5 border border-gray-100 shadow-sm">'
+            + '<div class="flex items-center gap-4">'
+            + (store.logo_url ? ('<img src="' + store.logo_url + '" class="w-14 h-14 rounded-2xl object-cover border border-gray-100"/>') : '<div class="w-14 h-14 rounded-2xl bg-gray-100"></div>')
+            + '<div><h3 class="text-2xl font-bold text-gray-800">' + (store.store_name || 'Foodgo') + '</h3><p class="text-gray-400 text-sm">' + (store.slogan || '') + '</p></div>'
+            + '</div>'
+            + '<p class="mt-4 text-sm ' + (hours.is_open ? 'text-green-600' : 'text-red-500') + '"><strong>Status:</strong> ' + (hours.human_status || '') + '</p>'
+            + '<p class="mt-2 text-sm text-gray-600"><strong>Telefone:</strong> ' + (store.phone || '—') + '</p>'
+            + '<p class="mt-1 text-sm text-gray-600"><strong>WhatsApp:</strong> ' + (store.whatsapp || '—') + '</p>'
+            + '<p class="mt-1 text-sm text-gray-600"><strong>Endereço:</strong> ' + (store.address || '—') + '</p>'
+            + '<div class="mt-3 flex gap-3">'
+            + (store.maps_url ? ('<a class="text-red-500 text-sm font-semibold" href="' + store.maps_url + '" target="_blank" rel="noopener">Maps</a>') : '')
+            + (store.instagram_url ? ('<a class="text-red-500 text-sm font-semibold" href="' + store.instagram_url + '" target="_blank" rel="noopener">Instagram</a>') : '')
+            + '</div>'
+            + '</div>'
+            + '<div class="bg-white rounded-[24px] p-5 border border-gray-100 shadow-sm mt-4">'
+            + '<h4 class="font-bold text-gray-800 mb-2">Horários</h4>'
+            + (rows || '<p class="text-sm text-gray-400">Sem horários cadastrados.</p>')
+            + '</div>'
+            + '</div>';
+    }
+
+    function applyCheckoutLabels(appRoot, checkoutCfg) {
+        if (!appRoot || !checkoutCfg) return;
+        state.fulfillment = checkoutCfg.default_fulfillment || 'delivery';
+        var d = checkoutCfg.labels && checkoutCfg.labels.delivery ? checkoutCfg.labels.delivery : 'Entrega';
+        var p = checkoutCfg.labels && checkoutCfg.labels.pickup ? checkoutCfg.labels.pickup : 'Retirada';
+        appRoot.querySelectorAll('button,span,p,a').forEach(function (el) {
+            var t = (el.textContent || '').trim();
+            if (t === 'Entrega') el.textContent = d;
+            if (t === 'Retirada') el.textContent = p;
+        });
     }
 
     function openClosedModalFallback() {
@@ -1655,6 +1714,28 @@
     }
 
     async function bootSettingsAndStatus(appRoot) {
+        try {
+            const bootstrap = await ropFetch('rop_app_bootstrap');
+            if (bootstrap && bootstrap.success && bootstrap.data) {
+                state.bootstrap = bootstrap.data;
+                state.store = bootstrap.data.store || {};
+                applyStoreVars(appRoot, state.store);
+                updateHomeTexts(appRoot, state.store);
+                renderInfoScreen(appRoot, bootstrap.data);
+                updateClosedModalText((bootstrap.data.hours && bootstrap.data.hours.human_status) || '');
+                updateEtaTexts(appRoot, (bootstrap.data.eta && bootstrap.data.eta.text) || '');
+                applyCheckoutLabels(appRoot, bootstrap.data.checkout || {});
+
+                if (bootstrap.data.hours && !bootstrap.data.hours.is_open) {
+                    if (typeof window.openStoreClosedModal === 'function') window.openStoreClosedModal();
+                    else openClosedModalFallback();
+                }
+                return;
+            }
+        } catch (err) {
+            console.warn('ROP bootstrap fetch failed', err);
+        }
+
         try {
             const settingsResponse = await ropFetch('rop_get_store_settings');
             if (settingsResponse && settingsResponse.success && settingsResponse.data && settingsResponse.data.store) {

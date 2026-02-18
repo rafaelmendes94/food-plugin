@@ -48,9 +48,21 @@ class ROP_Pages
 
     public static function render_foodgo_app()
     {
+        $colors = ROP_Store_Settings::get_colors();
+        $style = sprintf(
+            '--rop-primary:%s;--rop-secondary:%s;--rop-dark:%s;',
+            esc_attr($colors['primary']),
+            esc_attr($colors['secondary']),
+            esc_attr($colors['dark'])
+        );
+
         ob_start();
         include ROP_PATH . 'public/views/app-shell.php';
-        return ob_get_clean();
+        $html = (string) ob_get_clean();
+
+        $html = preg_replace('/<div\s+class="rop-app"\s+data-rop-app="1"/', '<div class="rop-app" data-rop-app="1" style="' . $style . '"', $html, 1);
+
+        return $html;
     }
 
     public static function add_delivery_body_class($classes)

@@ -39,7 +39,7 @@ class ROP_Store_Settings
         $settings['slogan'] = sanitize_text_field($settings['slogan']);
         $settings['phone'] = sanitize_text_field($settings['phone']);
         $settings['whatsapp'] = sanitize_text_field($settings['whatsapp']);
-        $settings['address'] = sanitize_text_field($settings['address']);
+        $settings['address'] = sanitize_textarea_field($settings['address']);
         $settings['logo_id'] = absint($settings['logo_id']);
         $settings['primary_color'] = self::sanitize_color($settings['primary_color'], '#EF4444');
         $settings['secondary_color'] = self::sanitize_color($settings['secondary_color'], '#FFFFFF');

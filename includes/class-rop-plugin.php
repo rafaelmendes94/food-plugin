@@ -29,6 +29,9 @@ class ROP_Plugin
 
     public function plugins_loaded()
     {
+        if (class_exists('ROP_Admin_Pages')) {
+            ROP_Admin_Pages::init();
+        }
     }
 
     public function init()
@@ -37,6 +40,12 @@ class ROP_Plugin
         ROP_Ajax::register();
         if (class_exists('ROP_Extras')) {
             ROP_Extras::init();
+        }
+        if (class_exists('ROP_Hours')) {
+            ROP_Hours::init();
+        }
+        if (class_exists('ROP_Delivery_Toggle')) {
+            ROP_Delivery_Toggle::init();
         }
     }
 
