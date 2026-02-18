@@ -17,6 +17,7 @@ class ROP_Extras
     {
         add_action('add_meta_boxes', [self::class, 'register_product_metabox']);
         add_action('save_post_product', [self::class, 'save_product_metabox']);
+        add_action('woocommerce_before_calculate_totals', [self::class, 'apply_cart_item_prices'], 20);
     }
 
     public static function register_product_metabox()
@@ -338,6 +339,72 @@ class ROP_Extras
         }
 
         return true;
+    }
+
+
+
+    public static function calculate_extras_total($product_id, $extras)
+    {
+        if (! is_array($extras) || empty($extras)) {
+            return 0.0;
+        }
+
+        $schema = self::get_effective_schema($product_id);
+        if (empty($schema)) {
+            return 0.0;
+        }
+
+        $price_map = [];
+        foreach ($schema as $group) {
+            foreach ((array) ($group['options'] ?? []) as $option) {
+                $label = sanitize_text_field((string) ($option['label'] ?? ''));
+                if ($label === '') {
+                    continue;
+                }
+
+                $price_map[mb_strtolower($label)] = (float) ($option['price'] ?? 0);
+            }
+        }
+
+        $total = 0.0;
+        foreach ($extras as $value) {
+            $values = is_array($value) ? $value : [$value];
+            foreach ($values as $single) {
+                $key = mb_strtolower(sanitize_text_field((string) $single));
+                if ($key !== '' && isset($price_map[$key])) {
+                    $total += (float) $price_map[$key];
+                }
+            }
+        }
+
+        return (float) wc_format_decimal($total, 2);
+    }
+
+    public static function apply_cart_item_prices($cart)
+    {
+        if (! $cart instanceof WC_Cart) {
+            return;
+        }
+
+        foreach ($cart->get_cart() as $cart_item_key => &$item) {
+            if (isset($item['rop_price_applied']) && (int) $item['rop_price_applied'] === 1) {
+                continue;
+            }
+
+            if (! isset($item['data']) || ! $item['data'] instanceof WC_Product) {
+                continue;
+            }
+
+            $base = isset($item['rop_base_price']) ? (float) $item['rop_base_price'] : (float) $item['data']->get_price();
+            $extras_total = isset($item['rop_extras_total']) ? (float) $item['rop_extras_total'] : 0.0;
+            $unit_price = (float) wc_format_decimal($base + $extras_total, 2);
+
+            $item['data']->set_price($unit_price);
+            $item['rop_line_unit_price'] = $unit_price;
+            $item['rop_price_applied'] = 1;
+            $cart->cart_contents[$cart_item_key] = $item;
+        }
+        unset($item);
     }
 
     public static function sanitize_groups($groups)

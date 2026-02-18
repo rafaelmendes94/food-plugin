@@ -38,6 +38,14 @@ class ROP_Ajax
         add_action('wp_ajax_nopriv_rop_cart_apply_coupon', [self::class, 'cart_apply_coupon']);
         add_action('wp_ajax_rop_cart_summary', [self::class, 'cart_summary']);
         add_action('wp_ajax_nopriv_rop_cart_summary', [self::class, 'cart_summary']);
+        add_action('wp_ajax_rop_cart_clear', [self::class, 'cart_clear']);
+        add_action('wp_ajax_nopriv_rop_cart_clear', [self::class, 'cart_clear']);
+        add_action('wp_ajax_rop_checkout_html', [self::class, 'checkout_html']);
+        add_action('wp_ajax_nopriv_rop_checkout_html', [self::class, 'checkout_html']);
+        add_action('wp_ajax_rop_place_order', [self::class, 'place_order']);
+        add_action('wp_ajax_nopriv_rop_place_order', [self::class, 'place_order']);
+        add_action('wp_ajax_rop_orders_list', [self::class, 'orders_list']);
+        add_action('wp_ajax_nopriv_rop_orders_list', [self::class, 'orders_list']);
         add_action('wp_ajax_rop_render_single_product', [self::class, 'render_single_product']);
         add_action('wp_ajax_nopriv_rop_render_single_product', [self::class, 'render_single_product']);
         add_action('wp_ajax_rop_add_to_cart_from_form', [self::class, 'add_to_cart_from_form']);
@@ -486,11 +494,15 @@ class ROP_Ajax
         if (! function_exists('WC') || ! WC()->cart) {
             wp_send_json_success([
                 'items' => [],
+                'coupons' => [],
+                'totals' => [
+                    'subtotal_html' => 'R$ 0,00',
+                    'shipping_html' => '—',
+                    'discount_html' => 'R$ 0,00',
+                    'total_html' => 'R$ 0,00',
+                ],
                 'count' => 0,
-                'subtotal_html' => 'R$ 0,00',
-                'shipping_html' => '—',
-                'total_html' => 'R$ 0,00',
-                'coupon' => '',
+                'total_raw' => 0,
             ]);
         }
 
@@ -506,19 +518,17 @@ class ROP_Ajax
                 $image = wc_placeholder_img_src('woocommerce_thumbnail');
             }
 
+            $qty = max(1, (int) ($item['quantity'] ?? 1));
+            $unit_price = isset($item['rop_line_unit_price']) ? (float) $item['rop_line_unit_price'] : (float) $product->get_price();
+            $line_total = $unit_price * $qty;
+
             $extras = $item['rop_extras'] ?? ($item['rop_barn2_raw'] ?? []);
             $extras_list = [];
             if (is_array($extras)) {
                 foreach ($extras as $value) {
-                    if (is_array($value)) {
-                        foreach ($value as $nested) {
-                            $txt = sanitize_text_field((string) $nested);
-                            if ($txt !== '') {
-                                $extras_list[] = $txt;
-                            }
-                        }
-                    } else {
-                        $txt = sanitize_text_field((string) $value);
+                    $vals = is_array($value) ? $value : [$value];
+                    foreach ($vals as $single) {
+                        $txt = sanitize_text_field((string) $single);
                         if ($txt !== '') {
                             $extras_list[] = $txt;
                         }
@@ -526,33 +536,38 @@ class ROP_Ajax
                 }
             }
 
-            $line_total = isset($item['line_total']) ? (float) $item['line_total'] : (float) $product->get_price() * (int) ($item['quantity'] ?? 1);
-
             $items[] = [
+                'key' => sanitize_text_field($cart_item_key),
                 'cart_item_key' => sanitize_text_field($cart_item_key),
                 'product_id' => (int) ($item['product_id'] ?? 0),
                 'name' => sanitize_text_field($product->get_name()),
-                'qty' => max(1, (int) ($item['quantity'] ?? 1)),
                 'image' => esc_url_raw($image),
-                'price_html' => wp_strip_all_tags(wc_price((float) $product->get_price())),
+                'qty' => $qty,
+                'unit_price_html' => wp_strip_all_tags(wc_price($unit_price)),
                 'line_total_html' => wp_strip_all_tags(wc_price($line_total)),
+                'unit_price' => $unit_price,
+                'line_total' => $line_total,
                 'extras_text' => implode(', ', array_values(array_unique($extras_list))),
+                'extras' => $extras,
             ];
         }
 
-        $coupon = '';
-        $applied = WC()->cart->get_applied_coupons();
-        if (! empty($applied)) {
-            $coupon = sanitize_text_field((string) $applied[0]);
+        $discount = 0.0;
+        if (method_exists(WC()->cart, 'get_discount_total')) {
+            $discount = (float) WC()->cart->get_discount_total();
         }
 
         wp_send_json_success([
             'items' => $items,
+            'coupons' => array_values(array_map('sanitize_text_field', WC()->cart->get_applied_coupons())),
+            'totals' => [
+                'subtotal_html' => wp_strip_all_tags(wc_price((float) WC()->cart->get_subtotal())),
+                'shipping_html' => wp_strip_all_tags(WC()->cart->get_cart_shipping_total() ?: 'Grátis'),
+                'discount_html' => wp_strip_all_tags(wc_price($discount)),
+                'total_html' => wp_strip_all_tags(WC()->cart->get_total()),
+            ],
             'count' => (int) WC()->cart->get_cart_contents_count(),
-            'subtotal_html' => wp_strip_all_tags(wc_price((float) WC()->cart->get_subtotal())),
-            'shipping_html' => wp_strip_all_tags(WC()->cart->get_cart_shipping_total() ?: 'Grátis'),
-            'total_html' => wp_strip_all_tags(WC()->cart->get_total()),
-            'coupon' => $coupon,
+            'total_raw' => (float) (method_exists(WC()->cart, 'get_total') ? WC()->cart->get_total('edit') : WC()->cart->total),
         ]);
     }
 
@@ -619,6 +634,124 @@ class ROP_Ajax
         }
 
         self::cart_get();
+    }
+
+
+    public static function cart_clear()
+    {
+        check_ajax_referer('rop_ajax', 'nonce');
+        self::ensure_cart_loaded();
+
+        if (function_exists('WC') && WC()->cart) {
+            WC()->cart->empty_cart();
+        }
+
+        wp_send_json_success(['ok' => true]);
+    }
+
+    public static function checkout_html()
+    {
+        check_ajax_referer('rop_ajax', 'nonce');
+
+        if (! function_exists('is_checkout')) {
+            wp_send_json_error(['message' => 'WooCommerce indisponível.'], 400);
+        }
+
+        ob_start();
+        echo do_shortcode('[woocommerce_checkout]');
+        $html = ob_get_clean();
+
+        wp_send_json_success([
+            'html' => is_string($html) ? $html : '',
+        ]);
+    }
+
+    public static function place_order()
+    {
+        check_ajax_referer('rop_ajax', 'nonce');
+
+        if (! ROP_Hours::is_open()) {
+            wp_send_json_error(['message' => 'Loja fechada no momento.'], 400);
+        }
+
+        $form_json = wp_unslash($_POST['form'] ?? '');
+        $fields = is_string($form_json) ? json_decode($form_json, true) : [];
+        $fields = is_array($fields) ? $fields : [];
+
+        $cookies = [];
+        foreach ($_COOKIE as $name => $value) {
+            $cookies[] = sanitize_text_field((string) $name) . '=' . rawurlencode((string) $value);
+        }
+
+        $response = wp_remote_post(home_url('/?wc-ajax=checkout'), [
+            'timeout' => 20,
+            'headers' => [
+                'Content-Type' => 'application/x-www-form-urlencoded; charset=UTF-8',
+                'Cookie' => implode('; ', $cookies),
+            ],
+            'body' => http_build_query($fields),
+        ]);
+
+        if (is_wp_error($response)) {
+            wp_send_json_error(['message' => 'Erro ao finalizar pedido.'], 500);
+        }
+
+        $body = wp_remote_retrieve_body($response);
+        $decoded = json_decode($body, true);
+        if (! is_array($decoded)) {
+            wp_send_json_error(['message' => 'Resposta inválida do checkout.'], 500);
+        }
+
+        $is_success = ! empty($decoded['result']) && $decoded['result'] === 'success';
+        $redirect = sanitize_text_field((string) ($decoded['redirect'] ?? ''));
+        $order_id = 0;
+        if ($redirect && preg_match('#order-received/(\d+)#', $redirect, $m)) {
+            $order_id = absint($m[1]);
+        }
+
+        if (! $is_success) {
+            $messages = wp_kses_post((string) ($decoded['messages'] ?? 'Não foi possível finalizar o pedido.'));
+            wp_send_json_error(['message' => $messages], 400);
+        }
+
+        wp_send_json_success([
+            'order_id' => $order_id,
+            'redirect' => esc_url_raw($redirect),
+        ]);
+    }
+
+    public static function orders_list()
+    {
+        check_ajax_referer('rop_ajax', 'nonce');
+
+        $customer_id = get_current_user_id();
+        if (! $customer_id) {
+            wp_send_json_success(['orders' => []]);
+        }
+
+        $orders = wc_get_orders([
+            'customer_id' => $customer_id,
+            'limit' => 10,
+            'orderby' => 'date',
+            'order' => 'DESC',
+        ]);
+
+        $payload = [];
+        foreach ($orders as $order) {
+            if (! $order instanceof WC_Order) {
+                continue;
+            }
+
+            $payload[] = [
+                'id' => $order->get_id(),
+                'number' => $order->get_order_number(),
+                'status' => sanitize_text_field($order->get_status()),
+                'total_html' => wp_strip_all_tags($order->get_formatted_order_total()),
+                'date' => $order->get_date_created() ? $order->get_date_created()->date_i18n('d/m H:i') : '',
+            ];
+        }
+
+        wp_send_json_success(['orders' => $payload]);
     }
 
     public static function render_single_product()
@@ -806,6 +939,13 @@ class ROP_Ajax
         }
 
         $cart_item_data = [];
+        $base_price = (float) wc_format_decimal((float) $product->get_price(), 2);
+        $extras_total = class_exists('ROP_Extras') ? (float) ROP_Extras::calculate_extras_total($product_id, $extras) : 0.0;
+
+        $cart_item_data['rop_base_price'] = $base_price;
+        $cart_item_data['rop_extras_total'] = $extras_total;
+        $cart_item_data['rop_line_unit_price'] = (float) wc_format_decimal($base_price + $extras_total, 2);
+
         if (! empty($extras)) {
             $cart_item_data['rop_barn2_raw'] = $extras;
             $cart_item_data['rop_barn2_key'] = md5(wp_json_encode($extras));

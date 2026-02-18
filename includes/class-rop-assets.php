@@ -93,6 +93,8 @@ class ROP_Assets
             'woocommerce',
             'wc-add-to-cart',
             'wc-add-to-cart-variation',
+            'wc-cart-fragments',
+            'wc-checkout',
         ];
 
         foreach ($handles as $handle) {

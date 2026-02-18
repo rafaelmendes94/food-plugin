@@ -393,3 +393,15 @@ body.rop-delivery-page footer:not(.rop-app footer) {
     color: #ef4444;
     font-weight: 700;
 }
+
+/* v1.7.0 checkout/cart polish */
+.rop-app #checkout-screen {
+    padding-bottom: 140px;
+}
+
+.rop-app [data-rop-checkout-notice="1"] {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 12px;
+    margin: 12px;
+}
