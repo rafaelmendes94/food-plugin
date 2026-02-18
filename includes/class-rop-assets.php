@@ -6,6 +6,35 @@ if (! defined('ABSPATH')) {
 
 class ROP_Assets
 {
+
+    public static function enqueue_admin_assets($hook)
+    {
+        if (! is_admin()) {
+            return;
+        }
+
+        if ($hook !== 'toplevel_page_rop-dashboard' && $hook !== 'rop-dashboard_page_rop-extras' && $hook !== 'rop-dashboard_page_rop-dashboard') {
+            if (strpos((string) $hook, 'rop-extras') === false) {
+                return;
+            }
+        }
+
+        wp_enqueue_style(
+            'rop-admin',
+            ROP_URL . 'public/assets/css/admin.css',
+            [],
+            ROP_VERSION
+        );
+
+        wp_enqueue_script(
+            'rop-admin',
+            ROP_URL . 'public/assets/js/admin.js',
+            [],
+            ROP_VERSION,
+            true
+        );
+    }
+
     public static function enqueue_public_assets()
     {
         if (! self::is_delivery_request()) {

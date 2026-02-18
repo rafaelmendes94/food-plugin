@@ -1,0 +1,37 @@
+.rop-admin-wrap .rop-admin-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.rop-admin-wrap .rop-card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 16px;
+}
+
+.rop-preset-group {
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 12px;
+    background: #f9fafb;
+}
+
+.rop-preset-group h4 {
+    margin: 0 0 10px;
+}
+
+.rop-options-list .rop-option-row {
+    display: grid;
+    grid-template-columns: 1fr 120px auto;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+@media (max-width: 960px) {
+    .rop-admin-wrap .rop-admin-grid {
+        grid-template-columns: 1fr;
+    }
+}

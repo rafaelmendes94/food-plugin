@@ -420,6 +420,7 @@ class ROP_Ajax
             'has_addons' => ROP_Compat_Barn2::is_active() && trim($barn2_html) !== '',
             'barn2_active' => (bool) ROP_Compat_Barn2::is_active(),
             'barn2_html' => wp_kses_post($barn2_html),
+            'rop_extras_schema' => class_exists('ROP_Extras') ? ROP_Extras::get_effective_schema($product_id) : [],
         ];
 
         wp_send_json_success([
@@ -649,6 +650,11 @@ class ROP_Ajax
         if (! empty($extras)) {
             $cart_item_data['rop_barn2_raw'] = $extras;
             $cart_item_data['rop_barn2_key'] = md5(wp_json_encode($extras));
+            $cart_item_data['rop_extras'] = $extras;
+        }
+
+        if (class_exists('ROP_Extras') && ! ROP_Extras::validate_selection($product_id, $extras)) {
+            return ['success' => false, 'status' => 400, 'message' => 'Seleção de extras inválida.', 'data' => []];
         }
 
         $original_post = $_POST;

@@ -25,6 +25,27 @@ if (! function_exists('rop_ticket_collect_item_meta_lines')) {
             $lines[] = sanitize_text_field($label . ': ' . $value);
         }
 
+
+        $raw_extras = $item->get_meta('rop_extras', true);
+        if (is_array($raw_extras)) {
+            foreach ($raw_extras as $key => $value) {
+                $clean_key = sanitize_text_field((string) $key);
+                if ($clean_key === '') {
+                    continue;
+                }
+
+                if (is_array($value)) {
+                    $clean_value = implode(', ', array_map('sanitize_text_field', $value));
+                } else {
+                    $clean_value = sanitize_text_field((string) $value);
+                }
+
+                if ($clean_value !== '') {
+                    $lines[] = $clean_key . ': ' . $clean_value;
+                }
+            }
+        }
+
         $raw = $item->get_meta('rop_barn2_raw', true);
         if (is_array($raw)) {
             foreach ($raw as $key => $value) {

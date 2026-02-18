@@ -24,6 +24,7 @@ class ROP_Plugin
         add_action('init', [$this, 'init']);
         add_action('wp_enqueue_scripts', [$this, 'enqueue_front_assets']);
         add_action('admin_menu', [$this, 'register_admin_menu']);
+        add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_assets']);
     }
 
     public function plugins_loaded()
@@ -34,6 +35,9 @@ class ROP_Plugin
     {
         ROP_Pages::init();
         ROP_Ajax::register();
+        if (class_exists('ROP_Extras')) {
+            ROP_Extras::init();
+        }
     }
 
     public function enqueue_front_assets()
@@ -47,4 +51,12 @@ class ROP_Plugin
             ROP_Admin_Menu::register();
         }
     }
+
+    public function enqueue_admin_assets($hook)
+    {
+        if (class_exists('ROP_Assets')) {
+            ROP_Assets::enqueue_admin_assets($hook);
+        }
+    }
 }
+
