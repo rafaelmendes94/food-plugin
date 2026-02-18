@@ -7,11 +7,11 @@ if (! defined('ABSPATH')) {
 class ROP_Extras
 {
     const OPTION_PRESETS = 'rop_extras_presets';
-    const OPTION_CACHE_BUSTER = 'rop_extras_schema_cache_buster';
+    const OPTION_PRESETS_VERSION = 'rop_extras_presets_version';
 
     const META_SCHEMA = '_rop_extras_schema';
     const META_PRESET_IDS = '_rop_extras_preset_ids';
-    const META_USE_CATEGORY = '_rop_extras_use_category_presets';
+    const META_DISABLE_CATEGORY = '_rop_extras_disable_category_presets';
 
     public static function init()
     {
@@ -38,21 +38,22 @@ class ROP_Extras
         $presets = self::get_presets();
         $selected_presets = get_post_meta($post->ID, self::META_PRESET_IDS, true);
         $selected_presets = is_array($selected_presets) ? array_map('sanitize_key', $selected_presets) : [];
-        $use_category_presets = absint(get_post_meta($post->ID, self::META_USE_CATEGORY, true)) === 1;
+        $disable_category_presets = absint(get_post_meta($post->ID, self::META_DISABLE_CATEGORY, true)) === 1;
 
         $schema = self::get_schema($post->ID);
         ?>
         <div class="rop-product-extras-metabox">
-            <p><strong><?php esc_html_e('Padrão por categoria', 'restaurant-ops-pro'); ?></strong></p>
+            <p><strong><?php esc_html_e('Padrão da categoria', 'restaurant-ops-pro'); ?></strong></p>
+            <p class="description"><?php esc_html_e('Presets vinculados às categorias deste produto serão aplicados automaticamente.', 'restaurant-ops-pro'); ?></p>
             <label>
-                <input type="checkbox" name="rop_extras_use_category_presets" value="1" <?php checked($use_category_presets); ?> />
-                <?php esc_html_e('Usar presets automáticos da(s) categoria(s) do produto.', 'restaurant-ops-pro'); ?>
+                <input type="checkbox" name="rop_extras_disable_category_presets" value="1" <?php checked($disable_category_presets); ?> />
+                <?php esc_html_e('Desativar presets automáticos neste produto.', 'restaurant-ops-pro'); ?>
             </label>
-            <p class="description"><?php esc_html_e('Quando ativo, busca presets vinculados às categorias do produto.', 'restaurant-ops-pro'); ?></p>
 
             <hr />
 
-            <p><strong><?php esc_html_e('Presets manuais', 'restaurant-ops-pro'); ?></strong></p>
+            <p><strong><?php esc_html_e('Presets extras (opcional)', 'restaurant-ops-pro'); ?></strong></p>
+            <p class="description"><?php esc_html_e('Use isso só se quiser adicionar algo além do padrão da categoria.', 'restaurant-ops-pro'); ?></p>
             <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:12px;">
                 <?php if (empty($presets)) : ?>
                     <em><?php esc_html_e('Nenhum preset cadastrado ainda.', 'restaurant-ops-pro'); ?></em>
@@ -92,8 +93,8 @@ class ROP_Extras
             return;
         }
 
-        $use_category = ! empty($_POST['rop_extras_use_category_presets']) ? 1 : 0;
-        update_post_meta($post_id, self::META_USE_CATEGORY, $use_category);
+        $disable_category = ! empty($_POST['rop_extras_disable_category_presets']) ? 1 : 0;
+        update_post_meta($post_id, self::META_DISABLE_CATEGORY, $disable_category);
 
         $preset_ids = isset($_POST['rop_extras_preset_ids']) && is_array($_POST['rop_extras_preset_ids'])
             ? array_values(array_unique(array_map('sanitize_key', wp_unslash($_POST['rop_extras_preset_ids']))))
@@ -198,7 +199,7 @@ class ROP_Extras
         }
 
         update_option(self::OPTION_PRESETS, $clean, false);
-        update_option(self::OPTION_CACHE_BUSTER, time(), false);
+        update_option(self::OPTION_PRESETS_VERSION, (string) time(), false);
 
         return $clean;
     }
@@ -229,20 +230,19 @@ class ROP_Extras
         $selected_preset_ids = get_post_meta($product_id, self::META_PRESET_IDS, true);
         $selected_preset_ids = is_array($selected_preset_ids) ? array_map('sanitize_key', $selected_preset_ids) : [];
 
-        $use_category = absint(get_post_meta($product_id, self::META_USE_CATEGORY, true)) === 1;
+        $disable_category_presets = absint(get_post_meta($product_id, self::META_DISABLE_CATEGORY, true)) === 1;
+
         $product_term_ids = [];
-        if ($use_category) {
-            $terms = wp_get_post_terms($product_id, 'product_cat', ['fields' => 'ids']);
-            if (! is_wp_error($terms) && is_array($terms)) {
-                $product_term_ids = array_map('absint', $terms);
-            }
+        $terms = wp_get_post_terms($product_id, 'product_cat', ['fields' => 'ids']);
+        if (! is_wp_error($terms) && is_array($terms)) {
+            $product_term_ids = array_map('absint', $terms);
         }
 
         $used_preset_ids = [];
         $preset_groups = [];
 
         foreach ($presets as $preset) {
-            $by_category = $use_category && ! empty(array_intersect($product_term_ids, (array) ($preset['category_ids'] ?? [])));
+            $by_category = ! $disable_category_presets && ! empty(array_intersect($product_term_ids, (array) ($preset['category_ids'] ?? [])));
             $by_manual = in_array($preset['id'], $selected_preset_ids, true);
 
             if (! $by_category && ! $by_manual) {
@@ -405,7 +405,7 @@ class ROP_Extras
 
     private static function get_product_cache_key($product_id)
     {
-        $buster = (string) get_option(self::OPTION_CACHE_BUSTER, '0');
+        $buster = (string) get_option(self::OPTION_PRESETS_VERSION, '0');
         return 'rop_effective_schema_' . absint($product_id) . '_' . md5($buster);
     }
 }
