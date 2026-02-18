@@ -405,6 +405,7 @@ class ROP_Ajax
             'formatted_price' => wp_strip_all_tags(wc_price((float) $product->get_price())),
             'price' => (float) $product->get_price(),
             'price_html' => wp_kses_post($product->get_price_html()),
+            'permalink' => esc_url_raw(get_permalink($product_id)),
             'image' => esc_url_raw($image),
             'gallery' => $gallery,
             'rating' => (float) $product->get_average_rating(),

@@ -17,6 +17,9 @@ class ROP_Pages
             return $template;
         }, 999);
         add_filter('body_class', [__CLASS__, 'add_delivery_body_class']);
+        add_action('wp_enqueue_scripts', [__CLASS__, 'enqueue_embed_product_assets'], 50);
+        add_filter('show_admin_bar', [__CLASS__, 'hide_admin_bar_on_embed_product']);
+        add_action('wp_footer', [__CLASS__, 'print_embed_product_bridge_script'], 999);
     }
 
     public static function activate()
@@ -60,4 +63,67 @@ class ROP_Pages
 
         return array_values(array_unique($classes));
     }
+
+    public static function enqueue_embed_product_assets()
+    {
+        if (! is_singular('product') || empty($_GET['rop_embed'])) {
+            return;
+        }
+
+        wp_enqueue_style(
+            'rop-embed-product',
+            ROP_URL . 'public/assets/css/embed-product.css',
+            [],
+            ROP_VERSION
+        );
+    }
+
+    public static function hide_admin_bar_on_embed_product($show)
+    {
+        if (is_singular('product') && ! empty($_GET['rop_embed'])) {
+            return false;
+        }
+
+        return $show;
+    }
+
+    public static function print_embed_product_bridge_script()
+    {
+        if (! is_singular('product') || empty($_GET['rop_embed'])) {
+            return;
+        }
+        ?>
+        <script>
+            (function () {
+                function postToParent(type) {
+                    window.parent.postMessage({ source: 'rop-embed', type: type }, '*');
+                }
+
+                document.addEventListener('submit', function (e) {
+                    var form = e.target;
+                    if (!form || !form.classList || !form.classList.contains('cart')) {
+                        return;
+                    }
+                    postToParent('add_to_cart_submitted');
+                }, true);
+
+                if (window.jQuery) {
+                    window.jQuery(document.body).on('added_to_cart', function () {
+                        postToParent('added_to_cart');
+                    });
+                } else {
+                    document.addEventListener('click', function (e) {
+                        var button = e.target.closest('button.single_add_to_cart_button, button.button');
+                        if (!button) {
+                            return;
+                        }
+                        postToParent('added_to_cart');
+                    }, true);
+                }
+            })();
+        </script>
+        <?php
+    }
+
 }
+

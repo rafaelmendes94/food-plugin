@@ -21,6 +21,7 @@
         productLoading: false,
         selectedVariationId: 0,
         selectedAttributes: {},
+        embedMessageBound: false,
     };
 
     async function ropFetch(action, data) {
@@ -302,6 +303,26 @@
         }
     }
 
+
+    function showHomeAddFeedback(appRoot, text) {
+        if (!appRoot) return;
+
+        let toast = appRoot.querySelector('[data-rop-toast="1"]');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.setAttribute('data-rop-toast', '1');
+            toast.className = 'fixed top-5 left-1/2 -translate-x-1/2 bg-[#2D2929] text-white text-xs font-semibold px-4 py-2 rounded-full shadow-lg z-[220] opacity-0 pointer-events-none transition-opacity duration-200';
+            appRoot.appendChild(toast);
+        }
+
+        toast.textContent = text || 'Adicionado ao carrinho';
+        toast.style.opacity = '1';
+        clearTimeout(toast._ropTimer);
+        toast._ropTimer = setTimeout(function () {
+            toast.style.opacity = '0';
+        }, 1200);
+    }
+
     function bindCardPlus(product, plusBtn) {
         plusBtn.onclick = null;
         plusBtn.addEventListener('click', async function (e) {
@@ -317,6 +338,9 @@
                 const response = await ropFetch('rop_add_to_cart_simple', { product_id: product.id, qty: 1 });
                 if (!response || !response.success) return;
 
+                plusBtn.classList.add('scale-95');
+                setTimeout(function () { plusBtn.classList.remove('scale-95'); }, 180);
+
                 const icon = plusBtn.querySelector('i[data-lucide]');
                 if (icon) {
                     icon.setAttribute('data-lucide', 'check');
@@ -326,6 +350,9 @@
                         if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
                     }, 800);
                 }
+
+                showHomeAddFeedback(getAppRoot(), 'Item adicionado ao carrinho');
+                refreshCartSummary(getAppRoot());
             } catch (err) {
                 console.warn('ROP add-to-cart failed', err);
             }
@@ -868,6 +895,7 @@
 
         const appDesc = ropQS(['#product-screen p.text-gray-500', '#product-screen .p-6 p']);
         const buyBlock = contentWrap ? contentWrap.querySelector('[data-rop-buyblock="1"]') : null;
+        const extrasBlock = contentWrap ? contentWrap.querySelector('[data-rop-extrasblock="1"]') : null;
         const extrasTitle = contentWrap
             ? Array.from(contentWrap.querySelectorAll('h3')).find(function (h) {
                 return (h.textContent || '').trim().toLowerCase().indexOf('adicionar extras') !== -1;
@@ -879,6 +907,7 @@
             if (appDesc) appDesc.style.display = 'none';
             if (buyBlock) buyBlock.style.display = 'none';
             if (extrasTitle) extrasTitle.style.display = 'none';
+            if (extrasBlock) extrasBlock.style.display = 'none';
             return;
         }
 
@@ -886,6 +915,7 @@
         if (appDesc) appDesc.style.display = '';
         if (buyBlock) buyBlock.style.display = '';
         if (extrasTitle) extrasTitle.style.display = '';
+        if (extrasBlock) extrasBlock.style.display = '';
     }
 
     function setBuyBlockAddVisibility(contentWrap, visible) {
@@ -898,6 +928,25 @@
         }
     }
 
+    function bindEmbedMessageBridge(appRoot) {
+        if (!appRoot || state.embedMessageBound) {
+            return;
+        }
+
+        window.addEventListener('message', function (event) {
+            const data = event && event.data ? event.data : null;
+            if (!data || data.source !== 'rop-embed') {
+                return;
+            }
+
+            if (data.type === 'added_to_cart' || data.type === 'add_to_cart_submitted') {
+                refreshCartSummary(appRoot);
+            }
+        });
+
+        state.embedMessageBound = true;
+    }
+
     async function mountEmbeddedWooSingle(appRoot, product) {
         const productScreen = getProductScreen(appRoot);
         if (!productScreen) return;
@@ -908,83 +957,38 @@
         ], productScreen);
         if (!contentWrap) return;
 
-        let wooWrap = contentWrap.querySelector('[data-rop-woo-single="1"]');
-        if (!wooWrap) {
-            wooWrap = document.createElement('div');
-            wooWrap.setAttribute('data-rop-woo-single', '1');
-            wooWrap.className = 'rop-woo-single mt-6';
-            const buyBlock = contentWrap.querySelector('[data-rop-buyblock="1"]');
-            if (buyBlock) {
-                contentWrap.insertBefore(wooWrap, buyBlock);
-            } else {
-                contentWrap.appendChild(wooWrap);
-            }
+        const useEmbedded = !!(ropUseWooSingle && product && product.barn2_active && product.permalink);
+
+        let frameWrap = contentWrap.querySelector('[data-rop-iframe="1"]');
+        if (!frameWrap) {
+            frameWrap = document.createElement('div');
+            frameWrap.setAttribute('data-rop-iframe', '1');
+            frameWrap.className = 'mt-4';
+            contentWrap.appendChild(frameWrap);
         }
 
-        const useEmbedded = !!(ropUseWooSingle && product && product.id);
-
         if (!useEmbedded) {
-            wooWrap.innerHTML = '';
+            frameWrap.innerHTML = '';
+            frameWrap.style.display = 'none';
             setBuyBlockAddVisibility(contentWrap, true);
             setWooSingleMode(appRoot, contentWrap, false);
             return;
         }
 
-        try {
-            const response = await ropFetch('rop_render_single_product', { product_id: product.id });
-            const html = response && response.success && response.data ? String(response.data.html || '') : '';
-            wooWrap.innerHTML = html;
-            wooWrap.style.display = '';
-            enhanceEmbeddedWooQty(wooWrap);
-            setBuyBlockAddVisibility(contentWrap, false);
-            setWooSingleMode(appRoot, contentWrap, true);
+        bindEmbedMessageBridge(appRoot);
 
-            const form = wooWrap.querySelector('form.cart');
-            const qtyInput = form ? form.querySelector('input.qty') : null;
+        const embedUrl = String(product.permalink).indexOf('?') === -1
+            ? (product.permalink + '?rop_embed=1')
+            : (product.permalink + '&rop_embed=1');
 
-            if (!form) {
-                console.info('ROP: form.cart não encontrado no embed, usando fallback');
-                setBuyBlockAddVisibility(contentWrap, true);
-                setWooSingleMode(appRoot, contentWrap, false);
-                return;
-            }
+        frameWrap.innerHTML = '<iframe src="' + embedUrl + '" loading="lazy" style="width:100%;height:70vh;border:0;border-radius:24px;overflow:hidden;background:#fff;"></iframe>';
+        frameWrap.style.display = '';
 
-            if (qtyInput) {
-                enhanceEmbeddedWooQty(wooWrap);
-            }
+        setBuyBlockAddVisibility(contentWrap, false);
+        setWooSingleMode(appRoot, contentWrap, true);
 
-            form.onsubmit = async function (e) {
-                e.preventDefault();
-
-                const fd = new FormData(form);
-                const payload = {};
-                fd.forEach(function (v, k) {
-                    if (Object.prototype.hasOwnProperty.call(payload, k)) {
-                        if (!Array.isArray(payload[k])) payload[k] = [payload[k]];
-                        payload[k].push(v);
-                    } else {
-                        payload[k] = v;
-                    }
-                });
-
-                const res = await ropFetch('rop_add_to_cart_from_form', {
-                    product_id: product.id,
-                    form: JSON.stringify(payload),
-                });
-
-                if (res && res.success) {
-                    await refreshCartSummary(appRoot);
-                }
-            };
-
-            if (window.lucide && typeof window.lucide.createIcons === 'function') {
-                window.lucide.createIcons();
-            }
-        } catch (err) {
-            console.warn('ROP embedded single render failed', err);
-            wooWrap.innerHTML = '';
-            setBuyBlockAddVisibility(contentWrap, true);
-            setWooSingleMode(appRoot, contentWrap, false);
+        if (window.lucide && typeof window.lucide.createIcons === 'function') {
+            window.lucide.createIcons();
         }
     }
 
