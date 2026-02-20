@@ -1,0 +1,55 @@
+.rop-admin-wrap .rop-admin-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.rop-admin-wrap .rop-card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    padding: 18px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03);
+}
+
+.rop-logo-preview img {
+    width: 72px;
+    height: 72px;
+    border-radius: 12px;
+    object-fit: cover;
+    margin-top: 8px;
+    border: 1px solid #e5e7eb;
+}
+
+.rop-hours-table input[type="time"],
+.rop-hours-table input[type="number"] {
+    max-width: 90px;
+}
+
+.rop-preset-group {
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 12px;
+    background: #f9fafb;
+}
+
+.rop-options-list .rop-option-row {
+    display: grid;
+    grid-template-columns: 1fr 120px auto;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.rop-categories-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px 10px;
+    margin-bottom: 12px;
+}
+
+@media (max-width: 960px) {
+    .rop-admin-wrap .rop-admin-grid {
+        grid-template-columns: 1fr;
+    }
+}

@@ -1,0 +1,519 @@
+.rop-delivery-page,
+.rop-delivery-page body,
+body.rop-delivery-page {
+    background: #f8f9fa;
+}
+
+body.rop-delivery-page > header,
+body.rop-delivery-page > footer,
+body.rop-delivery-page .site-header,
+body.rop-delivery-page .site-footer,
+body.rop-delivery-page #masthead,
+body.rop-delivery-page #colophon,
+body.rop-delivery-page header:not(.rop-app header),
+body.rop-delivery-page footer:not(.rop-app footer) {
+    display: none !important;
+}
+
+.rop-app,
+[data-rop-app='1'] {
+    width: 100%;
+    display: block;
+}
+
+@media (min-width: 1024px) {
+    .rop-delivery-page {
+        padding: 24px;
+        box-sizing: border-box;
+    }
+
+    .rop-app .mobile-container,
+    [data-rop-app='1'] .mobile-container {
+        max-width: 1180px;
+        margin: 0 auto;
+        border-radius: 28px;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08);
+        overflow: hidden;
+        min-height: calc(100vh - 48px);
+        background-color: #ffffff;
+    }
+
+    .rop-app .content-wrapper,
+    [data-rop-app='1'] .content-wrapper {
+        max-width: 1180px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    .rop-app #home-screen header,
+    .rop-app #home-screen > div:not(.bottom-nav-wrapper),
+    [data-rop-app='1'] #home-screen header,
+    [data-rop-app='1'] #home-screen > div:not(.bottom-nav-wrapper) {
+        max-width: 980px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    .rop-app .bottom-nav-wrapper,
+    [data-rop-app='1'] .bottom-nav-wrapper {
+        max-width: 1180px;
+        left: 50%;
+        transform: translateX(-50%);
+    }
+
+    .rop-app .checkout-bar,
+    [data-rop-app='1'] .checkout-bar {
+        max-width: 520px !important;
+        left: 50%;
+        transform: translateX(-50%);
+    }
+}
+
+.rop-app .product-card,
+[data-rop-app='1'] .product-card {
+    height: 260px;
+    display: flex;
+    flex-direction: column;
+}
+
+.rop-app .product-card h3,
+[data-rop-app='1'] .product-card h3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    min-height: 2.6em;
+    line-height: 1.3;
+}
+
+.rop-app .product-card p,
+[data-rop-app='1'] .product-card p {
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    min-height: 1.2em;
+}
+
+.rop-app .product-card .absolute.bottom-4.right-4,
+[data-rop-app='1'] .product-card .absolute.bottom-4.right-4 {
+    margin-top: auto;
+}
+
+
+/* v1.3.2 anti-flash before first paint */
+.rop-app #home-screen [class*='grid-cols-2'],
+[data-rop-app='1'] #home-screen [class*='grid-cols-2'] {
+    visibility: hidden;
+}
+
+.rop-app:not(.rop-ready) #home-screen .product-card,
+[data-rop-app='1']:not(.rop-ready) #home-screen .product-card {
+    display: none;
+}
+
+.rop-app.rop-ready #home-screen [class*='grid-cols-2'],
+[data-rop-app='1'].rop-ready #home-screen [class*='grid-cols-2'] {
+    visibility: visible;
+}
+
+
+/* v1.3.3 anti-flash for home category chips */
+.rop-app:not(.rop-ready-cats) #home-screen .px-6 .no-scrollbar,
+[data-rop-app='1']:not(.rop-ready-cats) #home-screen .px-6 .no-scrollbar {
+    visibility: hidden;
+}
+
+.rop-app:not(.rop-ready-cats) #home-screen .px-6 .no-scrollbar button,
+.rop-app:not(.rop-ready-cats) #home-screen .px-6 .no-scrollbar .filter-chip,
+[data-rop-app='1']:not(.rop-ready-cats) #home-screen .px-6 .no-scrollbar button,
+[data-rop-app='1']:not(.rop-ready-cats) #home-screen .px-6 .no-scrollbar .filter-chip {
+    display: none;
+}
+
+.rop-app.rop-ready-cats #home-screen .px-6 .no-scrollbar,
+[data-rop-app='1'].rop-ready-cats #home-screen .px-6 .no-scrollbar {
+    visibility: visible;
+}
+
+
+.rop-app #product-screen.rop-loading,
+[data-rop-app='1'] #product-screen.rop-loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+
+.rop-app .checkout-bar > div,
+[data-rop-app='1'] .checkout-bar > div {
+    cursor: pointer;
+}
+
+
+/* v1.4.3 anti-flash for product screen */
+.rop-app:not(.rop-ready-product) #product-screen,
+[data-rop-app='1']:not(.rop-ready-product) #product-screen {
+    visibility: hidden;
+}
+
+.rop-app.rop-ready-product #product-screen,
+[data-rop-app='1'].rop-ready-product #product-screen {
+    visibility: visible;
+}
+
+
+.rop-app #product-screen button:has(i[data-lucide="heart"]),
+[data-rop-app='1'] #product-screen button:has(i[data-lucide="heart"]),
+.rop-app #product-screen i[data-lucide="heart"],
+[data-rop-app='1'] #product-screen i[data-lucide="heart"] {
+    display: none !important;
+}
+
+
+/* v1.4.5 heart removal safeguard */
+.rop-app #product-screen i[data-lucide="heart"],
+.rop-app #product-screen button:has(i[data-lucide="heart"]) {
+    display: none !important;
+}
+
+
+/* v1.4.6 Barn2 fields-only styling in app */
+.rop-app .rop-barn2-scope button,
+.rop-app .rop-barn2-scope input[type="submit"],
+.rop-app .rop-barn2-scope .single_add_to_cart_button,
+.rop-app .rop-barn2-scope .quantity,
+.rop-app .rop-barn2-scope input[name="quantity"] {
+    display: none !important;
+}
+
+.rop-app .rop-barn2-scope input[type="text"],
+.rop-app .rop-barn2-scope input[type="number"],
+.rop-app .rop-barn2-scope select,
+.rop-app .rop-barn2-scope textarea {
+    width: 100%;
+    padding: 14px 16px;
+    background-color: #F9FAFB;
+    border: 1px solid #F3F4F6;
+    border-radius: 16px;
+    font-size: 14px;
+    color: #374151;
+    outline: none;
+}
+
+.rop-app .rop-barn2-scope label {
+    font-size: 14px;
+    font-weight: 600;
+    color: #374151;
+}
+
+
+/* v1.4.7 embedded Woo single styling */
+.rop-app .rop-woo-single .woocommerce-breadcrumb,
+.rop-app .rop-woo-single .product_meta,
+.rop-app .rop-woo-single .woocommerce-tabs,
+.rop-app .rop-woo-single .related,
+.rop-app .rop-woo-single .upsells,
+.rop-app .rop-woo-single .woocommerce-product-gallery,
+.rop-app .rop-woo-single h1.product_title {
+    display: none !important;
+}
+
+.rop-app .rop-woo-single form.cart {
+    margin: 0;
+    padding: 0;
+}
+
+.rop-app .rop-woo-single select,
+.rop-app .rop-woo-single input[type="text"],
+.rop-app .rop-woo-single input[type="number"],
+.rop-app .rop-woo-single textarea {
+    width: 100%;
+    padding: 14px 16px;
+    background-color: #F9FAFB;
+    border: 1px solid #F3F4F6;
+    border-radius: 16px;
+    font-size: 14px;
+    color: #374151;
+    outline: none;
+}
+
+.rop-app .rop-woo-single label {
+    font-size: 14px;
+    font-weight: 700;
+    color: #374151;
+    display: block;
+    margin-bottom: 8px;
+}
+
+.rop-app .rop-woo-single button.single_add_to_cart_button,
+.rop-app .rop-woo-single button.button {
+    width: 100%;
+    background: #EF4444;
+    color: #fff;
+    border: 0;
+    border-radius: 20px;
+    padding: 16px 18px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.rop-app .rop-woo-single button.single_add_to_cart_button:hover {
+    filter: brightness(0.95);
+}
+
+
+/* v1.4.8 embedded single as single source of product UI */
+.rop-app .rop-woo-single .woocommerce-breadcrumb,
+.rop-app .rop-woo-single .product_meta,
+.rop-app .rop-woo-single .woocommerce-tabs,
+.rop-app .rop-woo-single .related,
+.rop-app .rop-woo-single .upsells {
+    display: none !important;
+}
+
+.rop-app .rop-woo-single .summary {
+    margin: 0;
+}
+
+.rop-app .rop-woo-single .summary .price {
+    font-size: 20px;
+    font-weight: 800;
+    color: #111827;
+    margin: 10px 0 16px;
+}
+
+.rop-app .rop-woo-single .summary p {
+    color: #6B7280;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.rop-app .rop-woo-single input[type="checkbox"],
+.rop-app .rop-woo-single input[type="radio"] {
+    transform: scale(1.2);
+    margin-right: 10px;
+}
+
+.rop-app .rop-woo-single button.single_add_to_cart_button,
+.rop-app .rop-woo-single button.button {
+    margin-top: 16px;
+}
+
+.rop-app .rop-woo-single .quantity {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 12px 0;
+}
+
+.rop-app .rop-woo-single .quantity input.qty {
+    width: 90px;
+    text-align: center;
+}
+
+.rop-app.rop-woo-single-active [data-rop-buyblock="1"] {
+    display: none !important;
+}
+
+.rop-app.rop-woo-single-active #product-screen p.text-gray-500 {
+    display: none !important;
+}
+
+
+/* v1.4.9 final product-screen heart removal + qty sync ui */
+.rop-app #product-screen i[data-lucide="heart"] {
+    display: none !important;
+}
+
+.rop-app .rop-woo-single .quantity {
+    display: block;
+}
+
+.rop-app .rop-woo-single .quantity > input.qty {
+    display: block;
+}
+
+.rop-app .rop-woo-single .quantity > .rop-qty-ui {
+    display: flex;
+}
+
+/* v1.5.0 shortcode embed styling */
+.rop-app .rop-woo-single {
+    margin-top: 16px;
+}
+
+.rop-app .rop-woo-single .product {
+    margin: 0;
+}
+
+.rop-app .rop-woo-single .woocommerce-product-gallery,
+.rop-app .rop-woo-single h1.product_title {
+    display: none !important;
+}
+
+.rop-app .rop-woo-single .price {
+    font-size: 20px;
+    font-weight: 800;
+    color: #111827;
+    margin: 8px 0 14px;
+}
+
+.rop-app .rop-woo-single button.single_add_to_cart_button {
+    width: 100%;
+    background: #EF4444;
+    color: #fff;
+    border: 0;
+    border-radius: 20px;
+    padding: 16px 18px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.rop-app #product-screen i[data-lucide="heart"] {
+    display: none !important;
+}
+
+/* v1.5.2 iframe product embed */
+.rop-app [data-rop-iframe="1"] iframe {
+    display: block;
+}
+
+.rop-app.rop-woo-single-active [data-rop-extrasblock="1"] {
+    display: none !important;
+}
+
+/* v1.6.3 cart/extras UX */
+.rop-app [data-rop-toast="1"] {
+    backdrop-filter: blur(4px);
+}
+
+.rop-app .rop-barn2-scope .rop-extra-group-price {
+    color: #ef4444;
+    font-weight: 700;
+}
+
+/* v1.7.0 checkout/cart polish */
+.rop-app #checkout-screen {
+    padding-bottom: 120px;
+}
+
+.rop-app [data-rop-checkout-notice="1"] {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 12px;
+    margin: 12px;
+}
+
+
+.rop-app .rop-cart-state {
+    text-align: center;
+    font-size: 13px;
+    color: #9ca3af;
+    padding: 28px 8px;
+}
+
+.rop-app .rop-cart-state--error {
+    color: #ef4444;
+}
+
+/* v1.7.4 instant theme + hydration */
+.rop-app .rop-hidden-until-hydrated {
+    visibility: hidden;
+}
+
+.rop-app.rop-hydrated .rop-hidden-until-hydrated {
+    visibility: visible;
+}
+
+.rop-app .nav-background,
+.rop-app .plus-button-floating,
+.rop-app .filter-chip.active,
+.rop-app .rop-qty-ui [data-rop-plus],
+.rop-app .cart-qty-btn.bg-red-500,
+.rop-app .bg-red-500,
+.rop-app button.single_add_to_cart_button {
+    background-color: var(--rop-primary, #EF4444) !important;
+}
+
+.rop-app .text-red-500,
+.rop-app .rop-extra-group-price,
+.rop-app .border-red-500 {
+    color: var(--rop-primary, #EF4444) !important;
+    border-color: var(--rop-primary, #EF4444) !important;
+}
+
+.rop-app .bg-\[\#2D2929\],
+.rop-app .checkout-bar button,
+.rop-app #store-closed-modal button,
+.rop-app #success-modal button {
+    background-color: var(--rop-dark, #2D2929) !important;
+}
+
+/* v1.8.0 screen headers */
+.rop-app [data-rop-screen-header="1"] {
+    border-bottom: 1px solid #f3f4f6;
+    margin-bottom: 6px;
+}
+
+.rop-app #store-closed-modal [data-rop-close-x="1"] {
+    background: #fff;
+    border: 1px solid #f3f4f6;
+    border-radius: 999px;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+
+.rop-app .rop-cart-qty-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #e5e7eb;
+    transition: all .2s ease;
+}
+
+.rop-app .rop-cart-minus {
+    background: #fff;
+    color: #6b7280;
+}
+
+.rop-app .rop-cart-plus {
+    background: var(--rop-primary, #EF4444);
+    border-color: var(--rop-primary, #EF4444);
+    color: #fff;
+}
+
+.rop-app .rop-cart-remove {
+    background: transparent;
+    border: 0;
+    color: #6b7280;
+    font-size: 24px;
+    line-height: 1;
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.rop-app .rop-cart-remove:hover {
+    color: #ef4444;
+    background: #fee2e2;
+    border-color: #fecaca;
+}
+
+
+.rop-app svg.lucide {
+    width: 16px;
+    height: 16px;
+    stroke: currentColor;
+}
+
