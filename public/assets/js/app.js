@@ -93,7 +93,10 @@
     async function ropCartState() {
         const response = await ROP_API.post('rop_cart_state');
         const payload = normalizeCartResponse(response);
-        if (payload) return payload;
+        if (payload) {
+            console.log('ROP cart_state', payload.totals || {}, Array.isArray(payload.items) ? payload.items.length : 0);
+            return payload;
+        }
         throw new Error('cart_state_failed');
     }
 
@@ -1040,7 +1043,10 @@
     async function fetchCartData() {
         const response = await ROP_API.post('rop_cart_state');
         const payload = normalizeCartResponse(response);
-        if (payload) return payload;
+        if (payload) {
+            console.log('ROP cart_state', payload.totals || {}, Array.isArray(payload.items) ? payload.items.length : 0);
+            return payload;
+        }
         throw new Error('cart_state_failed');
     }
 
@@ -1062,9 +1068,9 @@
         if (!modal) return;
         const totals = (cart && cart.totals) ? cart.totals : {};
 
-        const subtotalEl = modal.querySelector('[data-rop-cart-subtotal]');
-        const shippingEl = modal.querySelector('[data-rop-cart-shipping]');
-        const totalEl = modal.querySelector('[data-rop-cart-total]');
+        const subtotalEl = document.getElementById('rop-cart-subtotal') || modal.querySelector('[data-rop-cart-subtotal]');
+        const shippingEl = document.getElementById('rop-cart-shipping') || modal.querySelector('[data-rop-cart-shipping]');
+        const totalEl = document.getElementById('rop-cart-total') || modal.querySelector('[data-rop-cart-total]');
 
         if (subtotalEl) subtotalEl.innerHTML = totals.subtotal_html || 'R$ 0,00';
         if (shippingEl) shippingEl.innerHTML = totals.shipping_html || 'Grátis';
@@ -1113,23 +1119,23 @@
 
     function getCartListContainer(modal) {
         if (!modal) return null;
-        let list = modal.querySelector('#cart-modal .flex-1.overflow-y-auto') || modal.querySelector('.flex-1.overflow-y-auto') || modal.querySelector('.flex-1');
+        let list = modal.querySelector('#rop-cart-items') || modal.querySelector('#cart-modal .flex-1.overflow-y-auto') || modal.querySelector('.flex-1.overflow-y-auto') || modal.querySelector('.flex-1');
         if (list) return list;
 
         const content = modal.querySelector('.modal-content');
         if (!content) return null;
 
         content.insertAdjacentHTML('beforeend', ''
-            + '<div class="flex-1 overflow-y-auto px-6 py-4 space-y-4"></div>'
+            + '<div id="rop-cart-items" class="flex-1 overflow-y-auto px-6 py-4 space-y-4"></div>'
             + '<div class="px-6 py-4 border-t border-gray-100">'
             + '<div data-rop-cart-notices class="text-xs mb-2"></div>'
-            + '<div class="flex gap-2 mb-3"><input type="text" placeholder="Cupom" class="flex-1 bg-gray-50 border border-gray-100 rounded-2xl px-4 py-3 text-sm"><button type="button" class="bg-red-500 text-white px-6 rounded-2xl font-bold text-sm shadow-md hover:bg-red-600 transition-colors">Aplicar</button></div>'
+            + '<div class="flex gap-2 mb-3"><input id="rop-coupon-code" type="text" placeholder="Cupom" class="flex-1 bg-gray-50 border border-gray-100 rounded-2xl px-4 py-3 text-sm"><button id="rop-coupon-apply" type="button" data-rop-cart-apply class="bg-red-500 text-white px-6 rounded-2xl font-bold text-sm shadow-md hover:bg-red-600 transition-colors">Aplicar</button></div>'
             + '<div class="space-y-3 text-sm text-gray-500">'
-            + '<div class="flex justify-between"><span>Subtotal</span><span data-rop-cart-subtotal>R$ 0,00</span></div>'
-            + '<div class="flex justify-between"><span>Entrega</span><span class="text-green-500" data-rop-cart-shipping>Grátis</span></div>'
-            + '<div class="flex justify-between text-xl font-bold text-gray-800"><span>Total</span><span data-rop-cart-total>R$ 0,00</span></div>'
+            + '<div class="flex justify-between"><span>Subtotal</span><span id="rop-cart-subtotal" data-rop-cart-subtotal>R$ 0,00</span></div>'
+            + '<div class="flex justify-between"><span>Entrega</span><span id="rop-cart-shipping" class="text-green-500" data-rop-cart-shipping>Grátis</span></div>'
+            + '<div class="flex justify-between text-xl font-bold text-gray-800"><span>Total</span><span id="rop-cart-total" data-rop-cart-total>R$ 0,00</span></div>'
             + '</div>'
-            + '<button type="button" onclick="checkStoreAndCheckout()" class="w-full mt-4 bg-[#2D2929] text-white py-3.5 rounded-2xl font-bold text-sm uppercase shadow-lg">Confirmar Pedido</button>'
+            + '<button id="rop-cart-checkout" type="button" onclick="checkStoreAndCheckout()" class="w-full mt-4 bg-[#2D2929] text-white py-3.5 rounded-2xl font-bold text-sm uppercase shadow-lg">Confirmar Pedido</button>'
             + '</div>');
 
         return modal.querySelector('.flex-1.overflow-y-auto') || null;
@@ -1186,8 +1192,8 @@
             };
         });
 
-        const couponInput = modal.querySelector('input[placeholder="Cupom"]');
-        const applyBtn = modal.querySelector('button.bg-red-500.text-white.px-6.rounded-2xl.font-bold.text-sm.shadow-md.hover\:bg-red-600.transition-colors');
+        const couponInput = modal.querySelector('#rop-coupon-code') || modal.querySelector('input[placeholder="Cupom"]');
+        const applyBtn = modal.querySelector('#rop-coupon-apply') || modal.querySelector('[data-rop-cart-apply]');
         if (applyBtn && !applyBtn.dataset.boundCoupon) {
             applyBtn.dataset.boundCoupon = '1';
             applyBtn.addEventListener('click', async function () {
@@ -1205,29 +1211,32 @@
     }
 
     async function renderCartModal(appRoot, providedCart) {
-        const modal = document.getElementById('cart-modal');
-        if (!modal) return;
-        const list = getCartListContainer(modal);
-        if (!list) return;
+        try {
+            const modal = document.getElementById('cart-modal');
+            if (!modal) return;
+            const list = getCartListContainer(modal);
+            if (!list) return;
 
-        list.innerHTML = '<div class="rop-cart-state">Carregando carrinho...</div>';
+            list.innerHTML = '<div class="rop-cart-state">Carregando carrinho...</div>';
 
-        let cart = providedCart || null;
-        if (!cart) {
-            try {
-                cart = await fetchCartData();
-            } catch (err) {
-                showCartInlineNotice(modal, 'Não foi possível atualizar, tente novamente.', true);
-                return;
+            let cart = providedCart || null;
+            if (!cart) {
+                try {
+                    cart = await fetchCartData();
+                } catch (err) {
+                    showCartInlineNotice(modal, 'Não foi possível atualizar, tente novamente.', true);
+                    return;
+                }
             }
-        }
 
-        const noticesTarget = modal.querySelector('[data-rop-cart-notices]');
-        if (noticesTarget) {
-            noticesTarget.innerHTML = cart.notices_html || '';
-        }
+            updateCartTotalsUI(modal, cart);
 
-        list.innerHTML = '';
+            const noticesTarget = modal.querySelector('[data-rop-cart-notices]');
+            if (noticesTarget) {
+                noticesTarget.innerHTML = cart.notices_html || '';
+            }
+
+            list.innerHTML = '';
         if (!Array.isArray(cart.items) || cart.items.length === 0) {
             list.innerHTML = '<div class="rop-cart-state">Seu carrinho está vazio.</div><div class="text-center"><button type="button" data-rop-open-menu class="bg-red-500 text-white px-4 py-2 rounded-xl text-xs font-bold">Ver cardápio</button></div>';
             const btn = list.querySelector('[data-rop-open-menu]');
@@ -1259,6 +1268,9 @@
         updateFreeShippingUI(modal, cart);
         renderCouponPills(modal, cart);
         ROP_UI.refreshIcons(modal);
+        } catch (e) {
+            console.error('ROP cart render error', e);
+        }
     }
 
     function bindCartOpenTriggers(appRoot) {
