@@ -451,17 +451,10 @@ body.rop-delivery-page footer:not(.rop-app footer) {
     background-color: var(--rop-dark, #2D2929) !important;
 }
 
-/* v1.7.6 screen headers + logout hint */
+/* v1.7.7 screen headers */
 .rop-app [data-rop-screen-header="1"] {
     border-bottom: 1px solid #f3f4f6;
     margin-bottom: 6px;
-}
-
-.rop-app .rop-logout-hint {
-    margin-top: 4px;
-    font-size: 10px;
-    color: #9ca3af;
-    text-align: center;
 }
 
 .rop-app #store-closed-modal [data-rop-close-x="1"] {

@@ -105,6 +105,33 @@
         return document.getElementById('filter-modal');
     }
 
+    function ensureFilterModalStructure(modal) {
+        if (!modal) return;
+        const content = modal.querySelector('.modal-content');
+        if (!content) return;
+        if (content.querySelector('.p-6.space-y-8')) return;
+
+        content.insertAdjacentHTML('beforeend', ''
+            + '<div class="p-6 space-y-8">'
+            + '<div><h3 class="text-sm font-bold text-gray-700 mb-3">Ordenar por</h3><div class="flex flex-wrap gap-2">'
+            + '<button type="button" class="filter-chip active">Recomendados</button>'
+            + '<button type="button" class="filter-chip">Menor Preço</button>'
+            + '<button type="button" class="filter-chip">Maior Preço</button>'
+            + '<button type="button" class="filter-chip">Mais Recentes</button>'
+            + '<button type="button" class="filter-chip">Em Promoção</button>'
+            + '</div></div>'
+            + '<div><h3 class="text-sm font-bold text-gray-700 mb-3">Categoria</h3><div class="flex flex-wrap gap-2">'
+            + '<button type="button" class="filter-chip active">Tudo</button>'
+            + '</div></div>'
+            + '<div><h3 class="text-sm font-bold text-gray-700 mb-3">Faixa de preço</h3><div class="flex flex-wrap gap-2">'
+            + '<button type="button" class="filter-chip">$</button>'
+            + '<button type="button" class="filter-chip">$$</button>'
+            + '<button type="button" class="filter-chip">$$$</button>'
+            + '</div></div>'
+            + '<button type="button" onclick="toggleModal(\'filter-modal\')" class="w-full bg-red-500 text-white py-3.5 rounded-2xl font-bold text-sm">Aplicar Filtros</button>'
+            + '</div>');
+    }
+
     function getProductScreen(appRoot) {
         return appRoot ? appRoot.querySelector('#product-screen') : null;
     }
@@ -188,7 +215,7 @@
 
         header.innerHTML = ''
             + '<div><h1 class="text-2xl text-gray-800 logo-font">' + getBrandMarkup(state.store || {}) + '</h1><p class="text-gray-400 text-xs">' + ((state.store && state.store.slogan) || '') + '</p></div>'
-            + '<div class="text-right"><button type="button" data-rop-logout-avatar class="w-12 h-12 rounded-full overflow-hidden border-2 border-white shadow-sm cursor-pointer active:scale-95 transition-transform hover:shadow-md"><img src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=150" alt="Usuário" class="w-full h-full object-cover"></button><div class="rop-logout-hint">Toque para sair</div></div>';
+            + '<div class="text-right"><button type="button" data-rop-logout-avatar class="w-12 h-12 rounded-full overflow-hidden border-2 border-white shadow-sm cursor-pointer active:scale-95 transition-transform hover:shadow-md"><img src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=150" alt="Usuário" class="w-full h-full object-cover"></button></div>';
 
         const btn = header.querySelector('[data-rop-logout-avatar]');
         if (btn) {
@@ -519,7 +546,7 @@
             }
 
             try {
-                const response = await ropFetch('rop_add_to_cart_simple', { product_id: product.id, qty: 1 });
+                const response = await ropFetch('rop_cart_add', { product_id: product.id, qty: 1 });
                 if (!response || !response.success) return;
 
                 plusBtn.classList.add('scale-95');
@@ -597,8 +624,7 @@
             category: state.homeCategory || '',
             q: state.q || '',
             orderby: state.orderby,
-            on_sale: state.onSale ? 1 : 0,
-            price_tier: state.priceTier || '',
+            price_bucket: state.priceTier || '',
         };
     }
 
@@ -607,7 +633,7 @@
         state.isLoading = true;
 
         try {
-            const response = await ropFetch('rop_list_products', currentFilters(state.page));
+            const response = await ropFetch('rop_products_list', currentFilters(state.page));
             if (!response || !response.success || !response.data) return;
 
             const products = Array.isArray(response.data.products) ? response.data.products : [];
@@ -746,6 +772,7 @@
     function bindFilterModal(appRoot, homeScreen) {
         const modal = getFilterModal();
         if (!modal) return;
+        ensureFilterModalStructure(modal);
 
         const sections = modal.querySelectorAll('.p-6.space-y-8 > div');
         const orderSection = sections[0];
@@ -754,7 +781,13 @@
 
         if (orderSection) {
             const chips = orderSection.querySelectorAll('.filter-chip');
-            const map = { Recomendados: 'recommended', 'Avaliação': 'rating', 'Menor Preço': 'price_asc' };
+            const map = {
+                'Recomendados': 'recommended',
+                'Menor Preço': 'price_asc',
+                'Maior Preço': 'price_desc',
+                'Mais Recentes': 'date',
+                'Em Promoção': 'sale',
+            };
             chips.forEach(function (chip) {
                 chip.addEventListener('click', function () {
                     chips.forEach((c) => c.classList.remove('active'));
@@ -786,7 +819,7 @@
                     chip.addEventListener('click', function () {
                         Array.from(wrap.querySelectorAll('.filter-chip')).forEach((c) => c.classList.remove('active'));
                         chip.classList.add('active');
-                        state.modalCategory = cat.slug;
+                        state.modalCategory = String(cat.slug || cat.id || '');
                     });
                     wrap.appendChild(chip);
                 });
@@ -806,9 +839,12 @@
         }
 
         const applyBtn = modal.querySelector('button[onclick*="toggleModal(\'filter-modal\')"]');
-        if (applyBtn) {
+        if (applyBtn && !applyBtn.dataset.ropApplyFilters) {
+            applyBtn.dataset.ropApplyFilters = '1';
             applyBtn.addEventListener('click', function () {
                 state.homeCategory = state.modalCategory || '';
+                state.page = 1;
+                state.hasMore = true;
                 renderHomeCategoryChips(appRoot, homeScreen);
                 resetAndLoadProducts(homeScreen);
             });
@@ -884,9 +920,9 @@
 
         let total = 'R$ 0,00';
         try {
-            const response = await ropFetch('rop_cart_summary');
-            if (response && response.success && response.data) {
-                total = stripTags(response.data.total_html || '') || total;
+            const response = await ropFetch('rop_cart_get');
+            if (response && response.success && response.data && response.data.totals) {
+                total = stripTags(response.data.totals.total_html || '') || total;
             }
         } catch (err) {
             console.warn('ROP cart summary failed', err);
@@ -906,42 +942,107 @@
         }
     }
 
-
     async function fetchCartData() {
         const response = await ropFetch('rop_cart_get');
+        if (window.ropDebug === true || window.location.search.indexOf('rop_debug=1') !== -1) {
+            console.log('[ROP] cart_get payload', response);
+        }
         if (response && response.success && response.data) {
             return response.data;
         }
-
         throw new Error('cart_get_failed');
     }
 
     function renderCartError(list, message, retryFn) {
         if (!list) return;
         list.innerHTML = '<div class="rop-cart-state rop-cart-state--error">' + (message || 'Erro ao carregar carrinho.') + '</div>'
-            + '<div class="text-center"><button type="button" data-rop-cart-retry class="bg-red-500 text-white px-4 py-2 rounded-xl text-xs font-bold">Tentar novamente</button></div>';
+            + '<div class="text-center mt-3"><button type="button" data-rop-cart-retry class="bg-red-500 text-white px-4 py-2 rounded-xl text-xs font-bold">Tentar novamente</button></div>';
         const retry = list.querySelector('[data-rop-cart-retry]');
-        if (retry && retryFn) {
-            retry.onclick = retryFn;
-        }
+        if (retry && retryFn) retry.onclick = retryFn;
     }
 
     function updateCartTotalsUI(modal, data) {
         if (!modal) return;
         const summaryRows = modal.querySelectorAll('.space-y-3 .flex.justify-between');
         const totalRow = modal.querySelector('.space-y-3 .text-xl.font-bold.text-gray-800');
+        const totals = (data && data.totals) ? data.totals : {};
+        const shippingText = (totals.shipping_html && stripTags(totals.shipping_html) !== 'R$ 0,00') ? totals.shipping_html : 'Grátis';
 
-        if (summaryRows[0]) {
-            summaryRows[0].innerHTML = '<span>Subtotal</span><span>' + ((data.totals && data.totals.subtotal_html) || 'R$ 0,00') + '</span>';
-        }
+        if (summaryRows[0]) summaryRows[0].innerHTML = '<span>Subtotal</span><span>' + (totals.subtotal_html || 'R$ 0,00') + '</span>';
+        if (summaryRows[1]) summaryRows[1].innerHTML = '<span>Entrega</span><span class="text-green-500">' + shippingText + '</span>';
+        if (totalRow) totalRow.innerHTML = '<span>Total</span><span>' + (totals.total_html || 'R$ 0,00') + '</span>';
+    }
 
-        if (summaryRows[1]) {
-            const shippingTxt = ((data.totals && data.totals.shipping_html) || 'Grátis') || 'Grátis';
-            summaryRows[1].innerHTML = '<span>Entrega</span><span class="text-green-500">' + shippingTxt + '</span>';
-        }
+    function getCartListContainer(modal) {
+        if (!modal) return null;
+        let list = modal.querySelector('#cart-modal .flex-1.overflow-y-auto')
+            || modal.querySelector('.flex-1.overflow-y-auto')
+            || modal.querySelector('.flex-1');
+        if (list) return list;
 
-        if (totalRow) {
-            totalRow.innerHTML = '<span>Total</span><span>' + ((data.totals && data.totals.total_html) || 'R$ 0,00') + '</span>';
+        const content = modal.querySelector('.modal-content');
+        if (!content) return null;
+
+        content.insertAdjacentHTML('beforeend', ''
+            + '<div class="flex-1 overflow-y-auto px-6 py-4 space-y-4"></div>'
+            + '<div class="px-6 py-4 border-t border-gray-100">'
+            + '<div data-rop-cart-notices class="text-xs mb-2"></div>'
+            + '<div class="flex gap-2 mb-3"><input type="text" placeholder="Cupom" class="flex-1 bg-gray-50 border border-gray-100 rounded-2xl px-4 py-3 text-sm"><button type="button" class="bg-red-500 text-white px-6 rounded-2xl font-bold text-sm shadow-md hover:bg-red-600 transition-colors">Aplicar</button></div>'
+            + '<div class="space-y-3 text-sm text-gray-500">'
+            + '<div class="flex justify-between"><span>Subtotal</span><span>R$ 0,00</span></div>'
+            + '<div class="flex justify-between"><span>Entrega</span><span class="text-green-500">Grátis</span></div>'
+            + '<div class="flex justify-between text-xl font-bold text-gray-800"><span>Total</span><span>R$ 0,00</span></div>'
+            + '</div>'
+            + '<button type="button" onclick="checkStoreAndCheckout()" class="w-full mt-4 bg-[#2D2929] text-white py-3.5 rounded-2xl font-bold text-sm uppercase shadow-lg">Confirmar Pedido</button>'
+            + '</div>');
+
+        return modal.querySelector('.flex-1.overflow-y-auto') || null;
+    }
+
+    function bindCartActions(appRoot, modal, list) {
+        list.querySelectorAll('[data-remove]').forEach(function (btn) {
+            btn.onclick = async function () {
+                try {
+                    await ropFetch('rop_cart_remove', { key: btn.getAttribute('data-remove') || '' });
+                    await renderCartModal(appRoot);
+                    await refreshCartSummary(appRoot);
+                } catch (err) {
+                    renderCartError(list, 'Falha ao remover item.', function () { renderCartModal(appRoot); });
+                }
+            };
+        });
+
+        list.querySelectorAll('[data-qty]').forEach(function (btn) {
+            btn.onclick = async function () {
+                const key = btn.getAttribute('data-qty') || '';
+                const action = btn.getAttribute('data-action') || 'plus';
+                const currentEl = btn.parentElement ? btn.parentElement.querySelector('span') : null;
+                const currentQty = Number((currentEl && currentEl.textContent) || 1);
+                const nextQty = action === 'minus' ? Math.max(1, currentQty - 1) : Math.min(99, currentQty + 1);
+                try {
+                    await ropFetch('rop_cart_set_qty', { key: key, qty: nextQty });
+                    await renderCartModal(appRoot);
+                    await refreshCartSummary(appRoot);
+                } catch (err) {
+                    renderCartError(list, 'Falha ao atualizar quantidade.', function () { renderCartModal(appRoot); });
+                }
+            };
+        });
+
+        const couponInput = modal.querySelector('input[placeholder="Cupom"]');
+        const applyBtn = modal.querySelector('button.bg-red-500.text-white.px-6.rounded-2xl.font-bold.text-sm.shadow-md.hover\:bg-red-600.transition-colors');
+        if (applyBtn && !applyBtn.dataset.boundCoupon) {
+            applyBtn.dataset.boundCoupon = '1';
+            applyBtn.addEventListener('click', async function () {
+                const code = couponInput ? (couponInput.value || '') : '';
+                try {
+                    await ropFetch('rop_cart_apply_coupon', { code: code });
+                    await renderCartModal(appRoot);
+                    await refreshCartSummary(appRoot);
+                } catch (err) {
+                    renderCartError(list, 'Falha ao aplicar cupom.', function () { renderCartModal(appRoot); });
+                }
+            });
         }
     }
 
@@ -949,16 +1050,18 @@
         const modal = document.getElementById('cart-modal');
         if (!modal) return;
 
-        const list = modal.querySelector('#cart-modal .flex-1.overflow-y-auto') || modal.querySelector('.flex-1.overflow-y-auto') || modal.querySelector('.flex-1');
-        const couponInput = modal.querySelector('input[placeholder="Cupom"]');
-        const applyBtn = modal.querySelector('button.bg-red-500.text-white.px-6.rounded-2xl.font-bold.text-sm.shadow-md.hover\:bg-red-600.transition-colors');
+        const list = getCartListContainer(modal);
+        if (window.ropDebug === true || window.location.search.indexOf('rop_debug=1') !== -1) {
+            console.log('[ROP] cart container', list);
+        }
 
-        if (list) {
-            list.innerHTML = '<div class="rop-cart-state">Carregando carrinho...</div>';
-        } else {
-            console.error('ROP cart list container not found');
+        if (!list) {
+            const shell = modal.querySelector('.modal-content') || modal;
+            shell.insertAdjacentHTML('beforeend', '<div class="p-6 text-sm text-red-600">Erro ao localizar a lista do carrinho.</div>');
             return;
         }
+
+        list.innerHTML = '<div class="rop-cart-state">Carregando carrinho...</div>';
 
         let data;
         try {
@@ -969,106 +1072,48 @@
             return;
         }
 
-        if (list) {
-            list.innerHTML = '';
-            if (!Array.isArray(data.items) || !data.items.length) {
-                list.innerHTML = '<div class="rop-cart-state">Seu carrinho está vazio.</div><div class="text-center"><button type="button" data-rop-open-menu class="bg-red-500 text-white px-4 py-2 rounded-xl text-xs font-bold">Ver cardápio</button></div>';
-            } else {
-                data.items.forEach(function (item) {
-                    const row = document.createElement('div');
-                    row.className = 'flex gap-4 items-center group';
-                    row.innerHTML = ''
-                        + '<div class="w-20 h-20 bg-gray-50 rounded-2xl p-2 flex items-center justify-center shrink-0 border border-gray-100"><img src="' + (item.image_url || '') + '" class="w-full h-full object-contain"></div>'
-                        + '<div class="flex-1">'
-                        + '<div class="flex justify-between items-start mb-1">'
-                        + '<h3 class="font-bold text-gray-800 text-sm leading-tight">' + (item.name || 'Item') + '</h3>'
-                        + '<button type="button" data-remove="' + (item.key || '') + '" class="text-gray-300 hover:text-red-500 transition-colors"><i data-lucide="trash-2" class="w-4 h-4"></i></button>'
-                        + '</div>'
-                        + '<p class="text-xs text-gray-400 mb-2">' + ((item.extras_text || '').trim() || '—') + '</p>'
-                        + '<div class="flex justify-between items-center">'
-                        + '<span class="font-bold text-red-500 text-sm">' + (item.line_total_html || 'R$ 0,00') + '</span>'
-                        + '<div class="flex items-center gap-2 bg-gray-50 px-2 py-1 rounded-xl border border-gray-100">'
-                        + '<button type="button" data-qty="' + (item.key || '') + '" data-action="minus" class="cart-qty-btn bg-white shadow-sm text-gray-400 hover:text-gray-600"><i data-lucide="minus" class="w-3 h-3"></i></button>'
-                        + '<span class="text-sm font-bold w-4 text-center text-gray-800">' + Number(item.qty || 1) + '</span>'
-                        + '<button type="button" data-qty="' + (item.key || '') + '" data-action="plus" class="cart-qty-btn bg-red-500 shadow-md text-white hover:bg-red-600"><i data-lucide="plus" class="w-3 h-3"></i></button>'
-                        + '</div></div></div>';
-                    list.appendChild(row);
-                });
+        const noticesTarget = modal.querySelector('[data-rop-cart-notices]') || list;
+        if (data.notices_html && noticesTarget) {
+            const notices = modal.querySelector('[data-rop-cart-notices]') || document.createElement('div');
+            if (!notices.getAttribute('data-rop-cart-notices')) {
+                notices.setAttribute('data-rop-cart-notices', '1');
+                notices.className = 'px-6 pt-4 text-sm';
+                const header = modal.querySelector('.border-b.border-gray-50');
+                if (header && header.parentElement) header.parentElement.insertBefore(notices, header.nextSibling);
             }
+            notices.innerHTML = data.notices_html;
         }
 
-        if (couponInput) {
-            couponInput.value = (Array.isArray(data.coupons) && data.coupons[0]) ? data.coupons[0] : '';
+        list.innerHTML = '';
+        if (!Array.isArray(data.items) || data.items.length === 0) {
+            list.innerHTML = '<div class="rop-cart-state">Seu carrinho está vazio.</div><div class="text-center"><button type="button" data-rop-open-menu class="bg-red-500 text-white px-4 py-2 rounded-xl text-xs font-bold">Ver cardápio</button></div>';
+            const btn = list.querySelector('[data-rop-open-menu]');
+            if (btn) {
+                btn.onclick = function () {
+                    if (typeof window.toggleModal === 'function') window.toggleModal('cart-modal');
+                    if (typeof window.navigateTo === 'function') window.navigateTo('home-screen');
+                };
+            }
+        } else {
+            data.items.forEach(function (item) {
+                const row = document.createElement('div');
+                row.className = 'flex gap-4 items-center group mb-4';
+                row.innerHTML = ''
+                    + '<div class="w-20 h-20 rounded-2xl overflow-hidden bg-gray-50 border border-gray-100 shrink-0"><img src="' + (item.image_url || '') + '" alt="' + (item.name || 'Produto') + '" class="w-full h-full object-cover"></div>'
+                    + '<div class="flex-1 min-w-0"><h4 class="font-semibold text-gray-800 text-sm truncate">' + (item.name || 'Produto') + '</h4>'
+                    + (item.extras_text ? ('<p class="text-xs text-gray-400 mt-1 line-clamp-2">' + item.extras_text + '</p>') : '')
+                    + '<div class="flex items-center justify-between mt-2"><span class="font-bold text-sm text-gray-800">' + (item.line_total_html || 'R$ 0,00') + '</span>'
+                    + '<div class="flex items-center gap-2"><button data-qty="' + (item.key || '') + '" data-action="minus" class="cart-qty-btn bg-gray-100 text-gray-600"><i data-lucide="minus" class="w-3 h-3"></i></button>'
+                    + '<span class="w-6 text-center text-sm font-semibold">' + Number(item.qty || 1) + '</span>'
+                    + '<button data-qty="' + (item.key || '') + '" data-action="plus" class="cart-qty-btn bg-red-500 shadow-md text-white"><i data-lucide="plus" class="w-3 h-3"></i></button>'
+                    + '<button data-remove="' + (item.key || '') + '" class="cart-qty-btn bg-gray-100 text-gray-500"><i data-lucide="trash-2" class="w-3 h-3"></i></button></div></div></div>';
+                list.appendChild(row);
+            });
+            bindCartActions(appRoot, modal, list);
         }
 
         updateCartTotalsUI(modal, data);
-
-
-        if (list) {
-            const openMenuBtn = list.querySelector('[data-rop-open-menu]');
-            if (openMenuBtn) {
-                openMenuBtn.onclick = function () {
-                    if (typeof window.toggleModal === 'function') {
-                        window.toggleModal('cart-modal');
-                    }
-                    if (typeof window.navigateTo === 'function') {
-                        window.navigateTo('home-screen');
-                    }
-                };
-            }
-        }
-
-        if (list) {
-            list.querySelectorAll('[data-remove]').forEach(function (btn) {
-                btn.onclick = async function () {
-                    try {
-                        await ropFetch('rop_cart_remove', { key: btn.getAttribute('data-remove') || '' });
-                        await renderCartModal(appRoot);
-                        await refreshCartSummary(appRoot);
-                    } catch (err) {
-                        renderCartError(list, 'Falha ao remover item.', function () { renderCartModal(appRoot); });
-                    }
-                };
-            });
-
-            list.querySelectorAll('[data-qty]').forEach(function (btn) {
-                btn.onclick = async function () {
-                    const key = btn.getAttribute('data-qty') || '';
-                    const action = btn.getAttribute('data-action') || 'plus';
-                    const currentEl = btn.parentElement ? btn.parentElement.querySelector('span') : null;
-                    const currentQty = Number((currentEl && currentEl.textContent) || 1);
-                    const nextQty = action === 'minus' ? Math.max(1, currentQty - 1) : Math.min(99, currentQty + 1);
-                    try {
-                        await ropFetch('rop_cart_set_qty', { key: key, qty: nextQty });
-                        await renderCartModal(appRoot);
-                        await refreshCartSummary(appRoot);
-                    } catch (err) {
-                        renderCartError(list, 'Falha ao atualizar quantidade.', function () { renderCartModal(appRoot); });
-                    }
-                };
-            });
-        }
-
-        if (applyBtn && !applyBtn.dataset.boundCoupon) {
-            applyBtn.dataset.boundCoupon = '1';
-            applyBtn.addEventListener('click', async function () {
-                const code = couponInput ? (couponInput.value || '') : '';
-                try {
-                    const res = await ropFetch('rop_cart_apply_coupon', { code: code });
-                    if (res && res.success) showHomeAddFeedback(appRoot, 'Cupom aplicado');
-                    else showHomeAddFeedback(appRoot, 'Cupom inválido');
-                    await renderCartModal(appRoot);
-                    await refreshCartSummary(appRoot);
-                } catch (err) {
-                    showHomeAddFeedback(appRoot, 'Cupom inválido');
-                    renderCartError(list, 'Falha ao aplicar cupom.', function () { renderCartModal(appRoot); });
-                }
-            });
-        }
-
-        if (window.lucide && typeof window.lucide.createIcons === 'function') {
-            window.lucide.createIcons();
-        }
+        if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
     }
 
     function bindCartOpenTriggers(appRoot) {
@@ -1076,9 +1121,7 @@
         if (floating) {
             floating.onclick = function (e) {
                 e.preventDefault();
-                if (typeof window.toggleModal === 'function') {
-                    window.toggleModal('cart-modal');
-                }
+                if (typeof window.toggleModal === 'function') window.toggleModal('cart-modal');
                 renderCartModal(appRoot);
             };
         }
@@ -2133,13 +2176,6 @@
         };
 
         appRoot.classList.add('rop-ready-product');
-        const homeAvatar = appRoot.querySelector('#home-screen header [onclick*=\"logout-modal\"]');
-        if (homeAvatar && !homeAvatar.parentElement.querySelector('.rop-logout-hint')) {
-            const hint = document.createElement('div');
-            hint.className = 'rop-logout-hint';
-            hint.textContent = 'Toque para sair';
-            homeAvatar.parentElement.appendChild(hint);
-        }
         updateFloatingButtonVisibility(appRoot);
         bindCartOpenTriggers(appRoot);
         refreshCartSummary(appRoot);
