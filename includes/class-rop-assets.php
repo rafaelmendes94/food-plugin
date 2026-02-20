@@ -63,6 +63,10 @@ class ROP_Assets
             true
         );
 
+        if (! wp_script_is('lucide-icons', 'enqueued')) {
+            wp_enqueue_script('lucide-icons', 'https://unpkg.com/lucide@latest', [], ROP_VERSION, true);
+        }
+
         self::enqueue_delivery_woo_assets();
         self::enqueue_delivery_barn2_assets();
 

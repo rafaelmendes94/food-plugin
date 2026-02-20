@@ -26,6 +26,22 @@
         fulfillment: 'delivery',
     };
 
+    const ROP_UI = {
+        refreshIcons(rootEl) {
+            if (!window.lucide || typeof window.lucide.createIcons !== 'function') return;
+            requestAnimationFrame(function () {
+                setTimeout(function () {
+                    try {
+                        window.lucide.createIcons({
+                            icons: window.lucide.icons
+                        });
+                    } catch (e) {
+                        window.lucide.createIcons();
+                    }
+                }, 0);
+            });
+        },
+    };
 
 
     const ROP_Checkout = {
@@ -232,7 +248,9 @@
                 t = document.createElement('h2');
                 t.setAttribute('data-rop-screen-title', '1');
                 t.className = 'px-6 text-xl font-bold text-gray-800';
-                header.insertAdjacentElement('afterend', t);
+            }
+            if (header.nextSibling !== t) {
+                screen.insertBefore(t, header.nextSibling);
             }
             t.textContent = title;
         }
@@ -430,7 +448,7 @@
         });
 
         if (appRoot) appRoot.classList.add('rop-ready-cats');
-        if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
+        ROP_UI.refreshIcons(appRoot);
     }
 
     function priceText(product) {
@@ -555,10 +573,10 @@
                 const icon = plusBtn.querySelector('i[data-lucide]');
                 if (icon) {
                     icon.setAttribute('data-lucide', 'check');
-                    if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
+                    ROP_UI.refreshIcons(getAppRoot());
                     setTimeout(function () {
                         icon.setAttribute('data-lucide', 'plus');
-                        if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
+                        ROP_UI.refreshIcons(getAppRoot());
                     }, 800);
                 }
 
@@ -614,7 +632,7 @@
             grid.appendChild(card);
         });
 
-        if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
+        ROP_UI.refreshIcons(getAppRoot());
     }
 
     function currentFilters(page) {
@@ -649,7 +667,7 @@
                 appRoot.classList.add('rop-ready');
                 appRoot.classList.add('rop-ready-cats');
                 appRoot.classList.add('rop-hydrated');
-                if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
+                ROP_UI.refreshIcons(appRoot);
             }
         }
     }
@@ -937,9 +955,7 @@
             renderCartModal(appRoot);
         };
 
-        if (window.lucide && typeof window.lucide.createIcons === 'function') {
-            window.lucide.createIcons();
-        }
+        ROP_UI.refreshIcons(appRoot);
     }
 
     async function fetchCartData() {
@@ -1048,7 +1064,11 @@
         list.querySelectorAll('[data-remove]').forEach(function (btn) {
             btn.onclick = async function () {
                 try {
-                    await ropFetch('rop_cart_remove', { key: btn.getAttribute('data-remove') || '' });
+                    const res = await ropFetch('rop_cart_remove', { key: btn.getAttribute('data-remove') || '' });
+                    if (res && res.success === false) {
+                        showHomeAddFeedback(appRoot, (res.data && res.data.message) ? res.data.message : 'Não foi possível remover.');
+                        return;
+                    }
                     await renderCartModal(appRoot);
                     await refreshCartSummary(appRoot);
                 } catch (err) {
@@ -1065,7 +1085,11 @@
                 const currentQty = Number((currentEl && currentEl.textContent) || 1);
                 const nextQty = action === 'minus' ? Math.max(1, currentQty - 1) : Math.min(99, currentQty + 1);
                 try {
-                    await ropFetch('rop_cart_set_qty', { key: key, qty: nextQty });
+                    const res = await ropFetch('rop_cart_set_qty', { key: key, qty: nextQty });
+                    if (res && res.success === false) {
+                        showHomeAddFeedback(appRoot, (res.data && res.data.message) ? res.data.message : 'Não foi possível atualizar.');
+                        return;
+                    }
                     await renderCartModal(appRoot);
                     await refreshCartSummary(appRoot);
                 } catch (err) {
@@ -1148,10 +1172,10 @@
                     + '<div class="flex-1 min-w-0"><h4 class="font-semibold text-gray-800 text-sm truncate">' + (item.name || 'Produto') + '</h4>'
                     + (item.extras_text ? ('<p class="text-xs text-gray-400 mt-1 line-clamp-2">' + item.extras_text + '</p>') : '')
                     + '<div class="flex items-center justify-between mt-2"><span class="font-bold text-sm text-gray-800">' + (item.line_total_html || 'R$ 0,00') + '</span>'
-                    + '<div class="flex items-center gap-2"><button data-qty="' + (item.key || '') + '" data-action="minus" class="rop-cart-qty-btn rop-cart-qty-btn--minus"><i data-lucide="minus" class="w-3 h-3"></i></button>'
+                    + '<div class="flex items-center gap-2"><button data-qty="' + (item.key || '') + '" data-action="minus" class="rop-cart-qty-btn rop-cart-minus"><i data-lucide="minus" class="w-3 h-3"></i></button>'
                     + '<span class="w-6 text-center text-sm font-semibold">' + Number(item.qty || 1) + '</span>'
-                    + '<button data-qty="' + (item.key || '') + '" data-action="plus" class="rop-cart-qty-btn rop-cart-qty-btn--plus"><i data-lucide="plus" class="w-3 h-3"></i></button>'
-                    + '<button data-remove="' + (item.key || '') + '" class="rop-cart-qty-btn rop-cart-qty-btn--remove"><i data-lucide="trash-2" class="w-3 h-3"></i></button></div></div></div>';
+                    + '<button data-qty="' + (item.key || '') + '" data-action="plus" class="rop-cart-qty-btn rop-cart-plus"><i data-lucide="plus" class="w-3 h-3"></i></button>'
+                    + '<button data-remove="' + (item.key || '') + '" class="rop-cart-remove"><i data-lucide="trash-2" class="w-3 h-3"></i></button></div></div></div>';
                 list.appendChild(row);
             });
             bindCartActions(appRoot, modal, list);
@@ -1160,7 +1184,7 @@
         updateCartTotalsUI(modal, data);
         updateFreeShippingUI(modal, data);
         renderCouponPills(modal, data, appRoot);
-        if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
+        ROP_UI.refreshIcons(modal);
     }
 
     function bindCartOpenTriggers(appRoot) {
@@ -1353,9 +1377,7 @@
             };
         }
 
-        if (window.lucide && typeof window.lucide.createIcons === 'function') {
-            window.lucide.createIcons();
-        }
+        ROP_UI.refreshIcons(appRoot);
     }
 
     function setWooSingleMode(appRoot, contentWrap, enabled) {
@@ -1455,9 +1477,7 @@
         setBuyBlockAddVisibility(contentWrap, false);
         setWooSingleMode(appRoot, contentWrap, true);
 
-        if (window.lucide && typeof window.lucide.createIcons === 'function') {
-            window.lucide.createIcons();
-        }
+        ROP_UI.refreshIcons(appRoot);
     }
 
     function setProductMetaPrice(productScreen, product, variation) {
@@ -1771,9 +1791,7 @@
             cta.textContent = 'Selecione opções';
         }
 
-        if (window.lucide && typeof window.lucide.createIcons === 'function') {
-            window.lucide.createIcons();
-        }
+        ROP_UI.refreshIcons(appRoot);
     }
 
     async function openProduct(productId) {
@@ -1851,7 +1869,7 @@
         const screen = appRoot ? appRoot.querySelector('#account-screen') : null;
         if (!screen) return;
 
-        const area = screen.querySelector('.p-6') || screen;
+        const area = screen.querySelector('.p-6:not([data-rop-screen-header="1"])') || screen.querySelector('.p-6') || screen;
         area.innerHTML = '<div class="rop-cart-state">Carregando conta...</div>';
 
         try {
@@ -2259,7 +2277,7 @@
             appRoot.classList.add('rop-ready');
             appRoot.classList.add('rop-ready-cats');
             appRoot.classList.add('rop-hydrated');
-            if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
+            ROP_UI.refreshIcons(appRoot);
         }
     });
 })();

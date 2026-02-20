@@ -626,6 +626,7 @@ class ROP_Ajax
         check_ajax_referer('rop_ajax', 'nonce');
         self::ensure_cart_loaded();
         self::debug_cart_context('cart_set_qty');
+        wc_clear_notices();
 
         if (! function_exists('WC') || ! WC()->cart) {
             wp_send_json_error(['message' => 'Carrinho indisponível.'], 500);
@@ -651,6 +652,7 @@ class ROP_Ajax
         check_ajax_referer('rop_ajax', 'nonce');
         self::ensure_cart_loaded();
         self::debug_cart_context('cart_remove');
+        wc_clear_notices();
 
         if (! function_exists('WC') || ! WC()->cart) {
             wp_send_json_error(['message' => 'Carrinho indisponível.'], 500);

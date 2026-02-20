@@ -451,7 +451,7 @@ body.rop-delivery-page footer:not(.rop-app footer) {
     background-color: var(--rop-dark, #2D2929) !important;
 }
 
-/* v1.7.8 screen headers */
+/* v1.7.9 screen headers */
 .rop-app [data-rop-screen-header="1"] {
     border-bottom: 1px solid #f3f4f6;
     margin-bottom: 6px;
@@ -480,24 +480,41 @@ body.rop-delivery-page footer:not(.rop-app footer) {
     transition: all .2s ease;
 }
 
-.rop-app .rop-cart-qty-btn--minus {
+.rop-app .rop-cart-minus {
     background: #fff;
     color: #6b7280;
 }
 
-.rop-app .rop-cart-qty-btn--plus {
+.rop-app .rop-cart-plus {
     background: var(--rop-primary, #EF4444);
     border-color: var(--rop-primary, #EF4444);
     color: #fff;
 }
 
-.rop-app .rop-cart-qty-btn--remove {
+.rop-app .rop-cart-remove {
     background: #f3f4f6;
     color: #6b7280;
 }
 
-.rop-app .rop-cart-qty-btn--remove:hover {
+.rop-app .rop-cart-remove:hover {
     color: #ef4444;
     background: #fee2e2;
     border-color: #fecaca;
+}
+
+
+.rop-app svg.lucide {
+    width: 16px;
+    height: 16px;
+    stroke: currentColor;
+}
+
+.rop-app .rop-cart-qty-btn svg.lucide {
+    width: 14px;
+    height: 14px;
+}
+
+.rop-app .rop-cart-remove svg.lucide {
+    width: 16px;
+    height: 16px;
 }
