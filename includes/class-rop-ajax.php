@@ -564,7 +564,7 @@ class ROP_Ajax
         if (! self::verify_cart_nonce()) {
             return;
         }
-        self::ensure_wc_cart();
+        self::ensure_wc_runtime();
         self::debug_cart_context('cart_get');
 
         self::end_cart_ajax_buffer();
@@ -579,7 +579,7 @@ class ROP_Ajax
         if (! self::verify_cart_nonce()) {
             return;
         }
-        self::ensure_wc_cart();
+        self::ensure_wc_runtime();
         self::debug_cart_context('cart_add');
 
         if (! function_exists('WC') || ! WC()->cart) {
@@ -623,7 +623,7 @@ class ROP_Ajax
             wp_send_json_error(['message' => $result['message'], 'cart' => self::cart_payload()], $result['status']);
         }
 
-        self::ensure_wc_cart();
+        self::ensure_wc_runtime();
 
         self::end_cart_ajax_buffer();
         wp_send_json_success(['cart' => self::cart_payload()]);
@@ -635,7 +635,7 @@ class ROP_Ajax
         if (! self::verify_cart_nonce()) {
             return;
         }
-        self::ensure_wc_cart();
+        self::ensure_wc_runtime();
         self::debug_cart_context('cart_set_qty');
 
         if (! function_exists('WC') || ! WC()->cart) {
@@ -671,7 +671,7 @@ class ROP_Ajax
         if (! self::verify_cart_nonce()) {
             return;
         }
-        self::ensure_wc_cart();
+        self::ensure_wc_runtime();
         self::debug_cart_context('cart_remove');
 
         if (! function_exists('WC') || ! WC()->cart) {
@@ -700,7 +700,7 @@ class ROP_Ajax
         if (! self::verify_cart_nonce()) {
             return;
         }
-        self::ensure_wc_cart();
+        self::ensure_wc_runtime();
         self::debug_cart_context('cart_apply_coupon');
 
         if (! function_exists('WC') || ! WC()->cart) {
@@ -728,7 +728,7 @@ class ROP_Ajax
         if (! self::verify_cart_nonce()) {
             return;
         }
-        self::ensure_wc_cart();
+        self::ensure_wc_runtime();
         self::debug_cart_context('cart_remove_coupon');
 
         if (! function_exists('WC') || ! WC()->cart) {
@@ -1255,6 +1255,7 @@ class ROP_Ajax
 
     private static function cart_payload()
     {
+        self::ensure_wc_runtime();
         if (! function_exists('WC') || ! WC()->cart) {
             return [
                 'count' => 0,
@@ -1307,32 +1308,48 @@ class ROP_Ajax
             }
 
             $qty = (int) ($item['quantity'] ?? 1);
+            $line_total = (float) ($item['line_total'] ?? 0) + (float) ($item['line_tax'] ?? 0);
+            $price_raw = (float) $product->get_price();
             $items[] = [
                 'key' => sanitize_text_field((string) $key),
                 'product_id' => (int) ($item['product_id'] ?? 0),
+                'variation_id' => (int) ($item['variation_id'] ?? 0),
                 'name' => sanitize_text_field($product->get_name()),
                 'thumb_url' => esc_url_raw($image_url),
                 'qty' => $qty,
-                'price_raw' => (float) $product->get_price(),
-                'price_html' => wp_strip_all_tags(WC()->cart->get_product_price($product)),
-                'line_total_raw' => (float) wc_format_decimal($item['line_total'] ?? 0),
-                'line_total_html' => wp_strip_all_tags(WC()->cart->get_product_subtotal($product, $qty)),
+                'price_raw' => $price_raw,
+                'price_html' => wp_strip_all_tags(wc_price($price_raw)),
+                'line_total_raw' => $line_total,
+                'line_total_html' => wp_strip_all_tags(wc_price($line_total)),
                 'meta_lines' => array_values(array_filter(array_unique($extras))),
             ];
         }
 
-        $subtotal_raw = (float) WC()->cart->get_subtotal();
-        $shipping_raw = (float) WC()->cart->get_shipping_total();
-        $discount_raw = (float) WC()->cart->get_discount_total();
-        $maybe_total = method_exists(WC()->cart, 'get_total') ? WC()->cart->get_total('edit') : null;
-        $total_raw = is_numeric($maybe_total) ? (float) $maybe_total : (float) WC()->cart->total;
-        if ($total_raw <= 0 && WC()->cart->get_cart_contents_count() > 0 && defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('rop cart_debug ' . wp_json_encode([
-                'cart_total_prop' => WC()->cart->total,
-                'get_total_edit' => $maybe_total,
-                'get_subtotal' => WC()->cart->get_subtotal(),
+        $totals = WC()->cart->get_totals();
+        $subtotal_raw = (float) ($totals['subtotal'] ?? 0);
+        $shipping_raw = (float) ($totals['shipping_total'] ?? 0);
+        $discount_raw = (float) ($totals['discount_total'] ?? 0);
+        $total_raw = (float) ($totals['total'] ?? 0);
+
+        if ($total_raw <= 0 && WC()->cart->get_cart_contents_count() > 0) {
+            if (class_exists('WC_Cart_Totals')) {
+                new WC_Cart_Totals(WC()->cart);
+                $totals = WC()->cart->get_totals();
+                $subtotal_raw = (float) ($totals['subtotal'] ?? 0);
+                $shipping_raw = (float) ($totals['shipping_total'] ?? 0);
+                $discount_raw = (float) ($totals['discount_total'] ?? 0);
+                $total_raw = (float) ($totals['total'] ?? 0);
+                WC()->cart->set_session();
+            }
+        }
+
+        if ($total_raw <= 0 && WC()->cart->get_cart_contents_count() > 0) {
+            self::log_issue('cart_totals_zero', [
                 'count' => WC()->cart->get_cart_contents_count(),
-            ]));
+                'items' => array_keys(WC()->cart->get_cart()),
+                'totals' => $totals,
+                'has_session' => WC()->session && method_exists(WC()->session, 'has_session') ? WC()->session->has_session() : null,
+            ]);
         }
 
         $threshold = self::get_free_shipping_threshold();
@@ -1442,7 +1459,7 @@ class ROP_Ajax
         }
     }
 
-    private static function ensure_wc_cart()
+    private static function ensure_wc_runtime()
     {
         if (! function_exists('WC')) {
             return;
@@ -1460,10 +1477,31 @@ class ROP_Ajax
             WC()->initialize_cart();
         }
 
+        if (WC()->session && method_exists(WC()->session, 'has_session') && ! WC()->session->has_session() && method_exists(WC()->session, 'set_customer_session_cookie')) {
+            WC()->session->set_customer_session_cookie(true);
+        }
+
         if (WC()->cart && method_exists(WC()->cart, 'get_cart')) {
             WC()->cart->get_cart();
             WC()->cart->calculate_totals();
             WC()->cart->set_session();
+        }
+    }
+
+    private static function ensure_wc_cart()
+    {
+        self::ensure_wc_runtime();
+    }
+
+    private static function log_issue($tag, $data = [])
+    {
+        if (class_exists('Rop_Logger') && method_exists('Rop_Logger', 'log')) {
+            Rop_Logger::log($tag, $data);
+            return;
+        }
+
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('rop ' . sanitize_key((string) $tag) . ' ' . wp_json_encode($data));
         }
     }
 
@@ -1491,7 +1529,7 @@ class ROP_Ajax
 
     private static function ensure_cart_loaded()
     {
-        self::ensure_wc_cart();
+        self::ensure_wc_runtime();
     }
 }
 

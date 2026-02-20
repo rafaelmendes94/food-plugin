@@ -101,53 +101,65 @@ class ROP_Hours
 
     public static function is_open($timestamp = null)
     {
-        $timestamp = $timestamp ? (int) $timestamp : current_time('timestamp');
+        $now = self::resolve_now($timestamp);
         $settings = self::get_settings();
-        $dayKey = strtolower(wp_date('D', $timestamp));
-        $dayKey = substr($dayKey, 0, 3);
-        $map = ['mon' => 'mon', 'tue' => 'tue', 'wed' => 'wed', 'thu' => 'thu', 'fri' => 'fri', 'sat' => 'sat', 'sun' => 'sun'];
-        $day = $map[$dayKey] ?? 'mon';
 
-        return self::is_open_in_day($settings[$day] ?? [], $timestamp);
+        $today = self::day_key_from_date($now);
+        $yesterday = self::day_key_from_date($now->modify('-1 day'));
+
+        $open_today = self::is_open_for_day($settings[$today] ?? [], $now, $now, false);
+        $open_from_yesterday = self::is_open_for_day($settings[$yesterday] ?? [], $now->modify('-1 day'), $now, true);
+
+        if (! $open_today && ! $open_from_yesterday && self::has_mismatch_today($settings[$today] ?? [], $now)) {
+            self::log_issue('hours_mismatch', [
+                'now' => wp_date('c', $now->getTimestamp(), wp_timezone()),
+                'tz' => wp_timezone_string(),
+                'dow' => (int) $now->format('N'),
+                'ranges' => $settings[$today]['ranges'] ?? [],
+            ]);
+        }
+
+        return $open_today || $open_from_yesterday;
     }
 
     public static function next_open_time($timestamp = null)
     {
-        $timestamp = $timestamp ? (int) $timestamp : current_time('timestamp');
+        $now = self::resolve_now($timestamp);
         if (self::is_open($timestamp)) {
             return '';
         }
 
         $settings = self::get_settings();
-        $days = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-        $currentW = (int) wp_date('w', $timestamp);
+        $best = null;
 
         for ($offset = 0; $offset < 8; $offset++) {
-            $idx = ($currentW + $offset) % 7;
-            $day = $days[$idx];
-            $info = $settings[$day] ?? ['enabled' => 0, 'ranges' => []];
-            if (empty($info['enabled'])) {
+            $dayDate = $now->modify('+' . $offset . ' day');
+            $dayKey = self::day_key_from_date($dayDate);
+            $day = $settings[$dayKey] ?? ['enabled' => 0, 'ranges' => []];
+            if (empty($day['enabled'])) {
                 continue;
             }
 
-            foreach ((array) ($info['ranges'] ?? []) as $range) {
+            foreach ((array) ($day['ranges'] ?? []) as $range) {
                 $start = self::sanitize_time($range['start'] ?? '');
-                if ($start === '') {
+                $end = self::sanitize_time($range['end'] ?? '');
+                if ($start === '' || $end === '') {
                     continue;
                 }
 
-                if ($offset === 0) {
-                    $startTs = strtotime(wp_date('Y-m-d', $timestamp) . ' ' . $start);
-                    if ($startTs && $startTs > $timestamp) {
-                        return $start;
-                    }
-                } else {
-                    return $start;
+                [$h, $m] = array_map('intval', explode(':', $start));
+                $candidate = $dayDate->setTime($h, $m, 0);
+                if ($candidate <= $now) {
+                    continue;
+                }
+
+                if ($best === null || $candidate < $best) {
+                    $best = $candidate;
                 }
             }
         }
 
-        return '09:00';
+        return $best ? $best->format('H:i') : '09:00';
     }
 
     public static function human_status($timestamp = null)
@@ -204,13 +216,12 @@ class ROP_Hours
         wc_add_notice(self::human_status(), 'error');
     }
 
-    private static function is_open_in_day($dayData, $timestamp)
+    private static function is_open_for_day($dayData, DateTimeImmutable $dayDate, DateTimeImmutable $now, $only_overnight)
     {
         if (! is_array($dayData) || empty($dayData['enabled'])) {
             return false;
         }
 
-        $currentMinutes = (int) wp_date('G', $timestamp) * 60 + (int) wp_date('i', $timestamp);
         foreach ((array) ($dayData['ranges'] ?? []) as $range) {
             $start = self::sanitize_time($range['start'] ?? '');
             $end = self::sanitize_time($range['end'] ?? '');
@@ -218,21 +229,88 @@ class ROP_Hours
                 continue;
             }
 
-            $startMinutes = self::time_to_minutes($start);
-            $endMinutes = self::time_to_minutes($end);
+            [$sh, $sm] = array_map('intval', explode(':', $start));
+            [$eh, $em] = array_map('intval', explode(':', $end));
 
-            if ($endMinutes > $startMinutes) {
-                if ($currentMinutes >= $startMinutes && $currentMinutes < $endMinutes) {
-                    return true;
-                }
-            } else {
-                if ($currentMinutes >= $startMinutes || $currentMinutes < $endMinutes) {
-                    return true;
-                }
+            $startDt = $dayDate->setTime($sh, $sm, 0);
+            $endDt = $dayDate->setTime($eh, $em, 0);
+            $overnight = $endDt <= $startDt;
+            if ($overnight) {
+                $endDt = $endDt->modify('+1 day');
+            }
+
+            if ($only_overnight && ! $overnight) {
+                continue;
+            }
+
+            if ($now >= $startDt && $now < $endDt) {
+                return true;
             }
         }
 
         return false;
+    }
+
+    private static function has_mismatch_today($dayData, DateTimeImmutable $now)
+    {
+        if (! is_array($dayData) || empty($dayData['enabled'])) {
+            return false;
+        }
+
+        foreach ((array) ($dayData['ranges'] ?? []) as $range) {
+            $start = self::sanitize_time($range['start'] ?? '');
+            $end = self::sanitize_time($range['end'] ?? '');
+            if ($start === '' || $end === '') {
+                continue;
+            }
+
+            [$sh, $sm] = array_map('intval', explode(':', $start));
+            [$eh, $em] = array_map('intval', explode(':', $end));
+            $startDt = $now->setTime($sh, $sm, 0);
+            $endDt = $now->setTime($eh, $em, 0);
+            if ($endDt <= $startDt) {
+                $endDt = $endDt->modify('+1 day');
+                $nowCmp = $now < $startDt ? $now->modify('+1 day') : $now;
+            } else {
+                $nowCmp = $now;
+            }
+
+            if ($nowCmp >= $startDt && $nowCmp < $endDt) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static function resolve_now($timestamp = null)
+    {
+        $tz = wp_timezone();
+        if ($timestamp) {
+            return (new DateTimeImmutable('@' . (int) $timestamp))->setTimezone($tz);
+        }
+
+        return new DateTimeImmutable('now', $tz);
+    }
+
+    private static function day_key_from_date(DateTimeImmutable $date)
+    {
+        $map = [1 => 'mon', 2 => 'tue', 3 => 'wed', 4 => 'thu', 5 => 'fri', 6 => 'sat', 7 => 'sun'];
+        return $map[(int) $date->format('N')] ?? 'mon';
+    }
+
+    private static function log_issue($tag, $data = [])
+    {
+        if (! defined('WP_DEBUG') || ! WP_DEBUG) {
+            return;
+        }
+
+        if (class_exists('Rop_Logger') && method_exists('Rop_Logger', 'log')) {
+            Rop_Logger::log($tag, $data);
+            return;
+        }
+
+        error_log('rop ' . sanitize_key((string) $tag) . ' ' . wp_json_encode($data));
     }
 
     private static function sanitize_time($time)
