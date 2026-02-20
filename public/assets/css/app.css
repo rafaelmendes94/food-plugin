@@ -451,7 +451,7 @@ body.rop-delivery-page footer:not(.rop-app footer) {
     background-color: var(--rop-dark, #2D2929) !important;
 }
 
-/* v1.7.7 screen headers */
+/* v1.7.8 screen headers */
 .rop-app [data-rop-screen-header="1"] {
     border-bottom: 1px solid #f3f4f6;
     margin-bottom: 6px;
@@ -466,4 +466,38 @@ body.rop-delivery-page footer:not(.rop-app footer) {
     display: flex;
     align-items: center;
     justify-content: center;
+}
+
+
+.rop-app .rop-cart-qty-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #e5e7eb;
+    transition: all .2s ease;
+}
+
+.rop-app .rop-cart-qty-btn--minus {
+    background: #fff;
+    color: #6b7280;
+}
+
+.rop-app .rop-cart-qty-btn--plus {
+    background: var(--rop-primary, #EF4444);
+    border-color: var(--rop-primary, #EF4444);
+    color: #fff;
+}
+
+.rop-app .rop-cart-qty-btn--remove {
+    background: #f3f4f6;
+    color: #6b7280;
+}
+
+.rop-app .rop-cart-qty-btn--remove:hover {
+    color: #ef4444;
+    background: #fee2e2;
+    border-color: #fecaca;
 }

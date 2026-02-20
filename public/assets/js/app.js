@@ -973,6 +973,51 @@
         if (totalRow) totalRow.innerHTML = '<span>Total</span><span>' + (totals.total_html || 'R$ 0,00') + '</span>';
     }
 
+
+    function updateFreeShippingUI(modal, data) {
+        if (!modal) return;
+        const box = modal.querySelector('[data-rop-free-shipping]');
+        if (!box) return;
+        const text = box.querySelector('div.text-xs') || box.firstElementChild;
+        const bar = box.querySelector('[data-rop-free-shipping-bar]');
+        const msg = (data && data.free_shipping_message) ? data.free_shipping_message : '';
+        const progress = Number((data && data.free_shipping_progress) || 0);
+        if (text) text.textContent = msg || 'Frete grátis indisponível';
+        if (bar) bar.style.width = Math.max(0, Math.min(100, progress * 100)) + '%';
+    }
+
+    function renderCouponPills(modal, data, appRoot) {
+        if (!modal) return;
+        let wrap = modal.querySelector('[data-rop-coupons]');
+        if (!wrap) {
+            wrap = document.createElement('div');
+            wrap.setAttribute('data-rop-coupons', '1');
+            wrap.className = 'mb-2 flex flex-wrap gap-2';
+            const notice = modal.querySelector('[data-rop-cart-notices]');
+            if (notice && notice.parentElement) {
+                notice.parentElement.insertBefore(wrap, notice.nextSibling);
+            }
+        }
+        const coupons = (data && Array.isArray(data.coupons)) ? data.coupons : [];
+        wrap.innerHTML = '';
+        coupons.forEach(function (code) {
+            const pill = document.createElement('button');
+            pill.type = 'button';
+            pill.className = 'text-xs px-3 py-1 rounded-full bg-gray-100 text-gray-700';
+            pill.textContent = 'Cupom: ' + code + ' ×';
+            pill.onclick = async function () {
+                try {
+                    await ropFetch('rop_cart_remove_coupon', { code: code });
+                    await renderCartModal(appRoot);
+                    await refreshCartSummary(appRoot);
+                } catch (err) {
+                    console.warn('remove coupon failed', err);
+                }
+            };
+            wrap.appendChild(pill);
+        });
+    }
+
     function getCartListContainer(modal) {
         if (!modal) return null;
         let list = modal.querySelector('#cart-modal .flex-1.overflow-y-auto')
@@ -1103,16 +1148,18 @@
                     + '<div class="flex-1 min-w-0"><h4 class="font-semibold text-gray-800 text-sm truncate">' + (item.name || 'Produto') + '</h4>'
                     + (item.extras_text ? ('<p class="text-xs text-gray-400 mt-1 line-clamp-2">' + item.extras_text + '</p>') : '')
                     + '<div class="flex items-center justify-between mt-2"><span class="font-bold text-sm text-gray-800">' + (item.line_total_html || 'R$ 0,00') + '</span>'
-                    + '<div class="flex items-center gap-2"><button data-qty="' + (item.key || '') + '" data-action="minus" class="cart-qty-btn bg-gray-100 text-gray-600"><i data-lucide="minus" class="w-3 h-3"></i></button>'
+                    + '<div class="flex items-center gap-2"><button data-qty="' + (item.key || '') + '" data-action="minus" class="rop-cart-qty-btn rop-cart-qty-btn--minus"><i data-lucide="minus" class="w-3 h-3"></i></button>'
                     + '<span class="w-6 text-center text-sm font-semibold">' + Number(item.qty || 1) + '</span>'
-                    + '<button data-qty="' + (item.key || '') + '" data-action="plus" class="cart-qty-btn bg-red-500 shadow-md text-white"><i data-lucide="plus" class="w-3 h-3"></i></button>'
-                    + '<button data-remove="' + (item.key || '') + '" class="cart-qty-btn bg-gray-100 text-gray-500"><i data-lucide="trash-2" class="w-3 h-3"></i></button></div></div></div>';
+                    + '<button data-qty="' + (item.key || '') + '" data-action="plus" class="rop-cart-qty-btn rop-cart-qty-btn--plus"><i data-lucide="plus" class="w-3 h-3"></i></button>'
+                    + '<button data-remove="' + (item.key || '') + '" class="rop-cart-qty-btn rop-cart-qty-btn--remove"><i data-lucide="trash-2" class="w-3 h-3"></i></button></div></div></div>';
                 list.appendChild(row);
             });
             bindCartActions(appRoot, modal, list);
         }
 
         updateCartTotalsUI(modal, data);
+        updateFreeShippingUI(modal, data);
+        renderCouponPills(modal, data, appRoot);
         if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
     }
 
@@ -1870,10 +1917,33 @@
         }
     }
 
+
+    function ensureOrdersLayout(appRoot) {
+        const screen = appRoot ? appRoot.querySelector('#orders-screen') : null;
+        if (!screen) return null;
+
+        let headerHost = screen.querySelector('[data-rop-orders-header]');
+        if (!headerHost) {
+            headerHost = document.createElement('div');
+            headerHost.setAttribute('data-rop-orders-header', '1');
+            screen.prepend(headerHost);
+        }
+
+        let body = screen.querySelector('[data-rop-orders-body]');
+        if (!body) {
+            body = document.createElement('div');
+            body.setAttribute('data-rop-orders-body', '1');
+            body.className = 'px-6 pb-32 space-y-5';
+            screen.appendChild(body);
+        }
+
+        return { screen: screen, body: body };
+    }
+
     function renderOrdersScreen(appRoot, orders) {
-        const screen = appRoot.querySelector('#orders-screen');
-        if (!screen) return;
-        const list = screen.querySelector('.px-6.pb-32.space-y-5') || screen.querySelector('.px-6.pb-32') || screen;
+        const layout = ensureOrdersLayout(appRoot);
+        if (!layout) return;
+        const list = layout.body;
 
         if (!Array.isArray(orders) || !orders.length) {
             list.innerHTML = '<div class="bg-white rounded-[24px] p-5 shadow-sm border border-gray-100 text-sm text-gray-400">Você ainda não fez pedidos.</div>';
@@ -2135,6 +2205,7 @@
                 }
 
                 if (screenId === 'orders-screen') {
+                    ensureOrdersLayout(appRoot);
                     ensureScreenHeader(appRoot, 'orders-screen', 'Meus Pedidos');
                     ropFetch('rop_orders_list').then(function (res) {
                         if (res && res.success && res.data && Array.isArray(res.data.orders)) {

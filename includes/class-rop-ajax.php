@@ -43,6 +43,8 @@ class ROP_Ajax
         add_action('wp_ajax_nopriv_rop_cart_remove', [self::class, 'cart_remove']);
         add_action('wp_ajax_rop_cart_apply_coupon', [self::class, 'cart_apply_coupon']);
         add_action('wp_ajax_nopriv_rop_cart_apply_coupon', [self::class, 'cart_apply_coupon']);
+        add_action('wp_ajax_rop_cart_remove_coupon', [self::class, 'cart_remove_coupon']);
+        add_action('wp_ajax_nopriv_rop_cart_remove_coupon', [self::class, 'cart_remove_coupon']);
         add_action('wp_ajax_rop_cart_summary', [self::class, 'cart_summary']);
         add_action('wp_ajax_nopriv_rop_cart_summary', [self::class, 'cart_summary']);
         add_action('wp_ajax_rop_cart_clear', [self::class, 'cart_clear']);
@@ -562,6 +564,9 @@ class ROP_Ajax
         self::ensure_cart_loaded();
         self::debug_cart_context('cart_get');
 
+        WC()->cart->calculate_totals();
+        WC()->cart->set_session();
+
         wp_send_json_success(self::build_cart_payload());
     }
 
@@ -611,6 +616,8 @@ class ROP_Ajax
         }
 
         WC()->cart->calculate_totals();
+        WC()->cart->set_session();
+
         wp_send_json_success(self::build_cart_payload());
     }
 
@@ -627,12 +634,15 @@ class ROP_Ajax
         $key = sanitize_text_field(wp_unslash($_POST['key'] ?? ''));
         $qty = max(1, absint($_POST['qty'] ?? 1));
 
-        if ($key === '' || ! WC()->cart->get_cart_item($key)) {
+        $cart_items = WC()->cart->get_cart();
+        if ($key === '' || ! isset($cart_items[$key])) {
             wp_send_json_error(['message' => 'Item inválido.'], 400);
         }
 
         WC()->cart->set_quantity($key, $qty, true);
         WC()->cart->calculate_totals();
+        WC()->cart->set_session();
+
         wp_send_json_success(self::build_cart_payload());
     }
 
@@ -647,12 +657,15 @@ class ROP_Ajax
         }
 
         $key = sanitize_text_field(wp_unslash($_POST['key'] ?? ''));
-        if ($key === '' || ! WC()->cart->get_cart_item($key)) {
+        $cart_items = WC()->cart->get_cart();
+        if ($key === '' || ! isset($cart_items[$key])) {
             wp_send_json_error(['message' => 'Item inválido.'], 400);
         }
 
         WC()->cart->remove_cart_item($key);
         WC()->cart->calculate_totals();
+        WC()->cart->set_session();
+
         wp_send_json_success(self::build_cart_payload());
     }
 
@@ -671,8 +684,34 @@ class ROP_Ajax
             wp_send_json_error(['message' => 'Informe um cupom.'], 400);
         }
 
+        wc_clear_notices();
         WC()->cart->apply_coupon($code);
         WC()->cart->calculate_totals();
+        WC()->cart->set_session();
+
+        wp_send_json_success(self::build_cart_payload());
+    }
+
+    public static function cart_remove_coupon()
+    {
+        check_ajax_referer('rop_ajax', 'nonce');
+        self::ensure_cart_loaded();
+        self::debug_cart_context('cart_remove_coupon');
+
+        if (! function_exists('WC') || ! WC()->cart) {
+            wp_send_json_error(['message' => 'Carrinho indisponível.'], 500);
+        }
+
+        $code = sanitize_text_field(wp_unslash($_POST['code'] ?? ''));
+        if ($code === '') {
+            wp_send_json_error(['message' => 'Cupom inválido.'], 400);
+        }
+
+        wc_clear_notices();
+        WC()->cart->remove_coupon($code);
+        WC()->cart->calculate_totals();
+        WC()->cart->set_session();
+
         wp_send_json_success(self::build_cart_payload());
     }
 
@@ -684,6 +723,7 @@ class ROP_Ajax
         if (function_exists('WC') && WC()->cart) {
             WC()->cart->empty_cart();
             WC()->cart->calculate_totals();
+            WC()->cart->set_session();
         }
 
         wp_send_json_success(['ok' => true]);
@@ -1184,16 +1224,27 @@ class ROP_Ajax
             return [
                 'count' => 0,
                 'items' => [],
+                'coupons' => [],
                 'totals' => [
+                    'subtotal_raw' => 0,
+                    'shipping_raw' => 0,
+                    'discount_raw' => 0,
+                    'total_raw' => 0,
                     'subtotal_html' => 'R$ 0,00',
                     'shipping_html' => 'Grátis',
                     'discount_html' => 'R$ 0,00',
                     'total_html' => 'R$ 0,00',
-                    'total_raw' => 0,
                 ],
+                'free_shipping_threshold_raw' => 0,
+                'free_shipping_remaining_raw' => 0,
+                'free_shipping_progress' => 0,
+                'free_shipping_message' => '',
                 'notices_html' => '',
             ];
         }
+
+        WC()->cart->calculate_totals();
+        WC()->cart->set_session();
 
         $items = [];
         foreach (WC()->cart->get_cart() as $key => $item) {
@@ -1220,16 +1271,48 @@ class ROP_Ajax
                 }
             }
 
+            $qty = (int) ($item['quantity'] ?? 1);
             $items[] = [
                 'key' => sanitize_text_field((string) $key),
                 'product_id' => (int) ($item['product_id'] ?? 0),
                 'name' => sanitize_text_field($product->get_name()),
                 'image_url' => esc_url_raw($image_url),
-                'qty' => (int) ($item['quantity'] ?? 1),
+                'qty' => $qty,
                 'unit_price_html' => wp_strip_all_tags(WC()->cart->get_product_price($product)),
-                'line_total_html' => wp_strip_all_tags(WC()->cart->get_product_subtotal($product, (int) ($item['quantity'] ?? 1))),
+                'line_total_html' => wp_strip_all_tags(WC()->cart->get_product_subtotal($product, $qty)),
                 'extras_text' => implode(', ', array_values(array_filter(array_unique($extras)))),
             ];
+        }
+
+        $subtotal_raw = (float) WC()->cart->get_subtotal();
+        $shipping_raw = (float) WC()->cart->get_shipping_total();
+        $discount_raw = (float) WC()->cart->get_discount_total();
+        $total_raw = method_exists(WC()->cart, 'get_total') ? (float) WC()->cart->get_total('edit') : (float) WC()->cart->total;
+
+        $threshold = self::get_free_shipping_threshold();
+        $base_for_free_shipping = max(0, $subtotal_raw - $discount_raw);
+        $remaining = $threshold > 0 ? max(0, $threshold - $base_for_free_shipping) : 0;
+        $progress = $threshold > 0 ? min(1, $base_for_free_shipping / $threshold) : 0;
+
+        $has_free_shipping_coupon = false;
+        foreach (WC()->cart->get_applied_coupons() as $coupon_code) {
+            $coupon = new WC_Coupon($coupon_code);
+            if ($coupon instanceof WC_Coupon && method_exists($coupon, 'get_free_shipping') && $coupon->get_free_shipping()) {
+                $has_free_shipping_coupon = true;
+                break;
+            }
+        }
+
+        $free_shipping_message = '';
+        if ($has_free_shipping_coupon) {
+            $progress = 1;
+            $remaining = 0;
+            $free_shipping_message = 'Cupom de frete grátis aplicado';
+        } elseif ($threshold > 0 && $remaining > 0) {
+            $free_shipping_message = sprintf('Falta %s para frete grátis', wp_strip_all_tags(wc_price($remaining)));
+        } elseif ($threshold > 0) {
+            $progress = 1;
+            $free_shipping_message = 'Você já desbloqueou frete grátis';
         }
 
         ob_start();
@@ -1238,25 +1321,50 @@ class ROP_Ajax
         }
         $notices_html = (string) ob_get_clean();
 
-        $shipping_html = WC()->cart->get_cart_shipping_total();
-        if ($shipping_html === '') {
-            $shipping_html = 'Grátis';
-        }
-
-        $discount_html = wc_price((float) WC()->cart->get_discount_total());
-
         return [
             'count' => (int) WC()->cart->get_cart_contents_count(),
             'items' => $items,
+            'coupons' => array_values(array_map('sanitize_text_field', WC()->cart->get_applied_coupons())),
             'totals' => [
-                'subtotal_html' => wp_strip_all_tags(WC()->cart->get_cart_subtotal()),
-                'shipping_html' => wp_strip_all_tags($shipping_html),
-                'discount_html' => wp_strip_all_tags($discount_html),
-                'total_html' => wp_strip_all_tags(WC()->cart->get_total()),
-                'total_raw' => (float) WC()->cart->get_total('edit'),
+                'subtotal_raw' => $subtotal_raw,
+                'shipping_raw' => $shipping_raw,
+                'discount_raw' => $discount_raw,
+                'total_raw' => $total_raw,
+                'subtotal_html' => wp_strip_all_tags(wc_price($subtotal_raw)),
+                'shipping_html' => $shipping_raw > 0 ? wp_strip_all_tags(wc_price($shipping_raw)) : 'Grátis',
+                'discount_html' => $discount_raw > 0 ? '- ' . wp_strip_all_tags(wc_price($discount_raw)) : wp_strip_all_tags(wc_price(0)),
+                'total_html' => wp_strip_all_tags(wc_price($total_raw)),
             ],
+            'free_shipping_threshold_raw' => $threshold,
+            'free_shipping_remaining_raw' => $remaining,
+            'free_shipping_progress' => $progress,
+            'free_shipping_message' => sanitize_text_field($free_shipping_message),
             'notices_html' => wp_kses_post($notices_html),
         ];
+    }
+
+    private static function get_free_shipping_threshold()
+    {
+        if (! class_exists('WC_Shipping_Zones')) {
+            return 0;
+        }
+
+        $threshold = 0;
+        $zones = WC_Shipping_Zones::get_zones();
+        foreach ($zones as $zone) {
+            $methods = isset($zone['shipping_methods']) && is_array($zone['shipping_methods']) ? $zone['shipping_methods'] : [];
+            foreach ($methods as $method) {
+                if (! $method instanceof WC_Shipping_Method || $method->id !== 'free_shipping' || $method->enabled !== 'yes') {
+                    continue;
+                }
+                $min_amount = isset($method->min_amount) ? (float) $method->min_amount : 0;
+                if ($min_amount > 0 && ($threshold <= 0 || $min_amount < $threshold)) {
+                    $threshold = $min_amount;
+                }
+            }
+        }
+
+        return $threshold;
     }
 
     private static function debug_cart_context($action)
