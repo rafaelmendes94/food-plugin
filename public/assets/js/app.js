@@ -74,33 +74,20 @@
         return res.json();
     }
 
-    async function ropWooAjax(endpoint, data) {
-        if (!window.ropAjax || !window.ropAjax.wcAjax) {
-            throw new Error('Woo AJAX indisponível');
+    async function ropPluginAddToCart(data) {
+        const response = await ROP_API.post('rop_cart_add', data || {});
+        if (!response || response.success !== true) {
+            throw new Error((response && response.data && response.data.message) ? response.data.message : 'Não foi possível adicionar ao carrinho.');
         }
+        return normalizeCartResponse(response) || ropCartState();
+    }
 
-        const url = String(window.ropAjax.wcAjax || '').replace('%%endpoint%%', endpoint || '');
-        const body = new URLSearchParams(data || {});
-        const res = await fetch(url, {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
-            body,
-        });
-
-        let payload = {};
-        try {
-            payload = await res.json();
-        } catch (e) {
-            payload = {};
+    async function ropPluginRemoveFromCart(cartItemKey) {
+        const response = await ROP_API.post('rop_cart_remove', { key: cartItemKey || '' });
+        if (!response || response.success !== true) {
+            throw new Error((response && response.data && response.data.message) ? response.data.message : 'Não foi possível remover o item.');
         }
-
-        if (!res.ok || (payload && payload.error)) {
-            const msg = payload && payload.product_url ? 'Produto indisponível.' : 'Não foi possível atualizar o carrinho.';
-            throw new Error(msg);
-        }
-
-        return payload;
+        return normalizeCartResponse(response) || ropCartState();
     }
 
     async function ropCartState() {
@@ -108,16 +95,6 @@
         const payload = normalizeCartResponse(response);
         if (payload) return payload;
         throw new Error('cart_state_failed');
-    }
-
-    async function ropWooAddToCart(data) {
-        await ropWooAjax('add_to_cart', data || {});
-        return ropCartState();
-    }
-
-    async function ropWooRemoveFromCart(cartItemKey) {
-        await ropWooAjax('remove_from_cart', { cart_item_key: cartItemKey || '' });
-        return ropCartState();
     }
 
     function formatBRL(price) {
@@ -263,6 +240,28 @@
         return (store && store.store_name) ? store.store_name : 'Foodgo';
     }
 
+    function ensureAccountLayout(appRoot) {
+        const screen = appRoot ? appRoot.querySelector('#account-screen') : null;
+        if (!screen) return null;
+
+        let body = screen.querySelector('[data-rop-account-body="1"]');
+        if (!body) {
+            body = document.createElement('div');
+            body.setAttribute('data-rop-account-body', '1');
+            body.className = 'p-6';
+            const title = screen.querySelector('[data-rop-screen-title="1"]');
+            if (title && title.nextSibling) {
+                screen.insertBefore(body, title.nextSibling);
+            } else if (title) {
+                screen.appendChild(body);
+            } else {
+                screen.appendChild(body);
+            }
+        }
+
+        return body;
+    }
+
     function ensureScreenHeader(appRoot, screenId, title) {
         const screen = appRoot ? appRoot.querySelector('#' + screenId) : null;
         if (!screen) return;
@@ -288,6 +287,10 @@
             };
         }
 
+        if (screenId === 'account-screen') {
+            ensureAccountLayout(appRoot);
+        }
+
         if (title) {
             let t = screen.querySelector('[data-rop-screen-title="1"]');
             if (!t) {
@@ -307,10 +310,13 @@
         if (!screen) return;
         const header = screen.querySelector('[data-rop-screen-header="1"]');
         const title = screen.querySelector('[data-rop-screen-title="1"]');
-        const area = screen.querySelector('.p-6:not([data-rop-screen-header="1"])') || screen.querySelector('.p-6');
+        const area = ensureAccountLayout(appRoot);
         if (!header || !title || !area) return;
-        if (title.nextElementSibling !== area) {
-            screen.insertBefore(title, area);
+        if (header.nextSibling !== title) {
+            screen.insertBefore(title, header.nextSibling);
+        }
+        if (title.nextSibling !== area) {
+            screen.insertBefore(area, title.nextSibling);
         }
     }
 
@@ -558,7 +564,7 @@
         }
 
         try {
-            await ropWooAddToCart(payload);
+            await ropPluginAddToCart(payload);
 
             if (cta && !opts.silentCTA) {
                 cta.textContent = 'Adicionado!';
@@ -619,7 +625,7 @@
             }
 
             try {
-                const cartPayload = await ropWooAddToCart({ product_id: product.id, quantity: 1 });
+                const cartPayload = await ropPluginAddToCart({ product_id: product.id, quantity: 1 });
 
                 plusBtn.classList.add('scale-95');
                 setTimeout(function () { plusBtn.classList.remove('scale-95'); }, 180);
@@ -1158,7 +1164,7 @@
             btn.onclick = async function () {
                 const key = btn.getAttribute('data-remove') || '';
                 await handleCartItemAction(appRoot, modal, btn, function () {
-                    return ropWooRemoveFromCart(key);
+                    return ropPluginRemoveFromCart(key);
                 });
             };
         });
@@ -1937,8 +1943,9 @@
         const screen = appRoot ? appRoot.querySelector('#account-screen') : null;
         if (!screen) return;
 
-        const area = screen.querySelector('.p-6:not([data-rop-screen-header="1"])') || screen.querySelector('.p-6') || screen;
+        ensureScreenHeader(appRoot, 'account-screen', 'Minha Conta');
         fixAccountTitlePosition(appRoot);
+        const area = ensureAccountLayout(appRoot) || screen;
         area.innerHTML = '<div class="rop-cart-state">Carregando conta...</div>';
 
         try {
