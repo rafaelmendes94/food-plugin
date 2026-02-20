@@ -74,6 +74,52 @@
         return res.json();
     }
 
+    async function ropWooAjax(endpoint, data) {
+        if (!window.ropAjax || !window.ropAjax.wcAjax) {
+            throw new Error('Woo AJAX indisponível');
+        }
+
+        const url = String(window.ropAjax.wcAjax || '').replace('%%endpoint%%', endpoint || '');
+        const body = new URLSearchParams(data || {});
+        const res = await fetch(url, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+            body,
+        });
+
+        let payload = {};
+        try {
+            payload = await res.json();
+        } catch (e) {
+            payload = {};
+        }
+
+        if (!res.ok || (payload && payload.error)) {
+            const msg = payload && payload.product_url ? 'Produto indisponível.' : 'Não foi possível atualizar o carrinho.';
+            throw new Error(msg);
+        }
+
+        return payload;
+    }
+
+    async function ropCartState() {
+        const response = await ROP_API.post('rop_cart_state');
+        const payload = normalizeCartResponse(response);
+        if (payload) return payload;
+        throw new Error('cart_state_failed');
+    }
+
+    async function ropWooAddToCart(data) {
+        await ropWooAjax('add_to_cart', data || {});
+        return ropCartState();
+    }
+
+    async function ropWooRemoveFromCart(cartItemKey) {
+        await ropWooAjax('remove_from_cart', { cart_item_key: cartItemKey || '' });
+        return ropCartState();
+    }
+
     function formatBRL(price) {
         const n = Number(price || 0);
         return 'R$ ' + n.toFixed(2).replace('.', ',');
@@ -497,25 +543,22 @@
         const extras = collectExtras(appRoot);
         const payload = {
             product_id: state.currentProduct.id,
-            qty: state.productQty,
-            extras: JSON.stringify(extras),
+            quantity: state.productQty,
         };
 
         if (state.currentProduct.is_variable) {
             payload.variation_id = state.selectedVariationId;
-            payload.attributes = JSON.stringify(state.selectedAttributes || {});
+            Object.keys(state.selectedAttributes || {}).forEach(function (k) {
+                payload[k] = state.selectedAttributes[k];
+            });
+        }
+
+        if (extras && extras.length) {
+            payload.rop_extras = JSON.stringify(extras);
         }
 
         try {
-            const response = await ropFetch('rop_add_to_cart', payload);
-
-            if (!response || !response.success) {
-                if (cta && !opts.silentCTA) {
-                    cta.textContent = 'Erro ao adicionar';
-                    setTimeout(function () { cta.textContent = originalText; }, 1200);
-                }
-                return false;
-            }
+            await ropWooAddToCart(payload);
 
             if (cta && !opts.silentCTA) {
                 cta.textContent = 'Adicionado!';
@@ -576,8 +619,7 @@
             }
 
             try {
-                const response = await ropFetch('rop_cart_add', { product_id: product.id, qty: 1 });
-                if (!response || !response.success) return;
+                const cartPayload = await ropWooAddToCart({ product_id: product.id, quantity: 1 });
 
                 plusBtn.classList.add('scale-95');
                 setTimeout(function () { plusBtn.classList.remove('scale-95'); }, 180);
@@ -593,7 +635,7 @@
                 }
 
                 showHomeAddFeedback(getAppRoot(), 'Item adicionado ao carrinho');
-                refreshCartSummary(getAppRoot());
+                refreshCartSummary(getAppRoot(), cartPayload);
             } catch (err) {
                 console.warn('ROP add-to-cart failed', err);
             }
@@ -951,7 +993,7 @@
         let cart = cartPayload || null;
         if (!cart) {
             try {
-                const response = await ROP_API.post('rop_cart_get');
+                const response = await ROP_API.post('rop_cart_state');
                 cart = normalizeCartResponse(response);
             } catch (err) {
                 cart = null;
@@ -990,10 +1032,10 @@
     }
 
     async function fetchCartData() {
-        const response = await ROP_API.post('rop_cart_get');
+        const response = await ROP_API.post('rop_cart_state');
         const payload = normalizeCartResponse(response);
         if (payload) return payload;
-        throw new Error('cart_get_failed');
+        throw new Error('cart_state_failed');
     }
 
     function showCartInlineNotice(modal, message, isError) {
@@ -1043,7 +1085,7 @@
         if (bar) bar.style.width = Math.max(0, Math.min(100, progress * 100)) + '%';
     }
 
-    function renderCouponPills(modal, cart, appRoot) {
+    function renderCouponPills(modal, cart) {
         if (!modal) return;
         let wrap = modal.querySelector('[data-rop-coupons]');
         if (!wrap) {
@@ -1056,18 +1098,9 @@
         const coupons = (cart && Array.isArray(cart.coupons)) ? cart.coupons : [];
         wrap.innerHTML = '';
         coupons.forEach(function (code) {
-            const pill = document.createElement('button');
-            pill.type = 'button';
+            const pill = document.createElement('span');
             pill.className = 'text-xs px-3 py-1 rounded-full bg-gray-100 text-gray-700';
-            pill.textContent = 'Cupom: ' + code + ' ×';
-            pill.onclick = async function () {
-                const res = await ROP_API.post('rop_cart_remove_coupon', { code: code });
-                const cartPayload = normalizeCartResponse(res);
-                if (cartPayload) {
-                    await renderCartModal(appRoot, cartPayload);
-                    await refreshCartSummary(appRoot, cartPayload);
-                }
-            };
+            pill.textContent = 'Cupom: ' + code;
             wrap.appendChild(pill);
         });
     }
@@ -1096,33 +1129,37 @@
         return modal.querySelector('.flex-1.overflow-y-auto') || null;
     }
 
-    async function handleCartItemAction(appRoot, modal, list, btn, action, payload) {
+    async function handleCartItemAction(appRoot, modal, btn, worker) {
         const row = btn ? btn.closest('.group') : null;
         if (row) {
             row.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
         }
 
-        const res = await ROP_API.post(action, payload || {});
-        const cartPayload = normalizeCartResponse(res);
-
-        if (cartPayload) {
+        try {
+            await worker();
+            const cartPayload = await ropCartState();
             await renderCartModal(appRoot, cartPayload);
             await refreshCartSummary(appRoot, cartPayload);
-        }
-
-        if (!res || res.success !== true) {
-            showCartInlineNotice(modal, (res && res.data && res.data.message) ? res.data.message : 'Não foi possível atualizar, tente novamente.', true);
+            showCartInlineNotice(modal, '', false);
+        } catch (err) {
+            showCartInlineNotice(modal, err && err.message ? err.message : 'Não foi possível atualizar, tente novamente.', true);
+            try {
+                const cartPayload = await ropCartState();
+                await renderCartModal(appRoot, cartPayload);
+                await refreshCartSummary(appRoot, cartPayload);
+            } catch (e) {
+                // ignore secondary errors
+            }
         }
     }
 
     function bindCartActions(appRoot, modal, list) {
         list.querySelectorAll('[data-remove]').forEach(function (btn) {
             btn.onclick = async function () {
-                try {
-                    await handleCartItemAction(appRoot, modal, list, btn, 'rop_cart_remove', { key: btn.getAttribute('data-remove') || '' });
-                } catch (err) {
-                    showCartInlineNotice(modal, 'Não foi possível atualizar, tente novamente.', true);
-                }
+                const key = btn.getAttribute('data-remove') || '';
+                await handleCartItemAction(appRoot, modal, btn, function () {
+                    return ropWooRemoveFromCart(key);
+                });
             };
         });
 
@@ -1133,11 +1170,13 @@
                 const currentEl = btn.parentElement ? btn.parentElement.querySelector('.rop-cart-qty-val') : null;
                 const currentQty = Number((currentEl && currentEl.textContent) || 1);
                 const nextQty = action === 'minus' ? Math.max(1, currentQty - 1) : Math.min(99, currentQty + 1);
-                try {
-                    await handleCartItemAction(appRoot, modal, list, btn, 'rop_cart_set_qty', { key: key, qty: nextQty });
-                } catch (err) {
-                    showCartInlineNotice(modal, 'Não foi possível atualizar, tente novamente.', true);
-                }
+                await handleCartItemAction(appRoot, modal, btn, function () {
+                    return ROP_API.post('rop_cart_set_qty', { key: key, qty: nextQty }).then(function (res) {
+                        if (!res || res.success !== true) {
+                            throw new Error((res && res.data && res.data.message) ? res.data.message : 'Não foi possível atualizar, tente novamente.');
+                        }
+                    });
+                });
             };
         });
 
@@ -1146,16 +1185,15 @@
         if (applyBtn && !applyBtn.dataset.boundCoupon) {
             applyBtn.dataset.boundCoupon = '1';
             applyBtn.addEventListener('click', async function () {
-                const code = couponInput ? (couponInput.value || '') : '';
+                const code = couponInput ? (couponInput.value || '').trim() : '';
                 const res = await ROP_API.post('rop_cart_apply_coupon', { code: code });
-                const cartPayload = normalizeCartResponse(res);
-                if (cartPayload) {
-                    await renderCartModal(appRoot, cartPayload);
-                    await refreshCartSummary(appRoot, cartPayload);
+                if (!res || res.success !== true) {
+                    showCartInlineNotice(modal, (res && res.data && res.data.message) ? res.data.message : 'Cupom inválido.', false);
+                    return;
                 }
-                if (res && res.success !== true) {
-                    showCartInlineNotice(modal, (res.data && res.data.message) ? res.data.message : 'Cupom inválido.', false);
-                }
+                const cartPayload = await ropCartState();
+                await renderCartModal(appRoot, cartPayload);
+                await refreshCartSummary(appRoot, cartPayload);
             });
         }
     }
@@ -1213,7 +1251,7 @@
 
         updateCartTotalsUI(modal, cart);
         updateFreeShippingUI(modal, cart);
-        renderCouponPills(modal, cart, appRoot);
+        renderCouponPills(modal, cart);
         ROP_UI.refreshIcons(modal);
     }
 

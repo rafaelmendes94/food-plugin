@@ -33,18 +33,12 @@ class ROP_Ajax
         add_action('wp_ajax_nopriv_rop_add_to_cart', [self::class, 'add_to_cart']);
         add_action('wp_ajax_rop_get_cart_summary', [self::class, 'get_cart_summary']);
         add_action('wp_ajax_nopriv_rop_get_cart_summary', [self::class, 'get_cart_summary']);
-        add_action('wp_ajax_rop_cart_get', [self::class, 'cart_get']);
-        add_action('wp_ajax_nopriv_rop_cart_get', [self::class, 'cart_get']);
-        add_action('wp_ajax_rop_cart_add', [self::class, 'cart_add']);
-        add_action('wp_ajax_nopriv_rop_cart_add', [self::class, 'cart_add']);
+        add_action('wp_ajax_rop_cart_state', [self::class, 'cart_state']);
+        add_action('wp_ajax_nopriv_rop_cart_state', [self::class, 'cart_state']);
         add_action('wp_ajax_rop_cart_set_qty', [self::class, 'cart_set_qty']);
         add_action('wp_ajax_nopriv_rop_cart_set_qty', [self::class, 'cart_set_qty']);
-        add_action('wp_ajax_rop_cart_remove', [self::class, 'cart_remove']);
-        add_action('wp_ajax_nopriv_rop_cart_remove', [self::class, 'cart_remove']);
         add_action('wp_ajax_rop_cart_apply_coupon', [self::class, 'cart_apply_coupon']);
         add_action('wp_ajax_nopriv_rop_cart_apply_coupon', [self::class, 'cart_apply_coupon']);
-        add_action('wp_ajax_rop_cart_remove_coupon', [self::class, 'cart_remove_coupon']);
-        add_action('wp_ajax_nopriv_rop_cart_remove_coupon', [self::class, 'cart_remove_coupon']);
         add_action('wp_ajax_rop_cart_summary', [self::class, 'cart_summary']);
         add_action('wp_ajax_nopriv_rop_cart_summary', [self::class, 'cart_summary']);
         add_action('wp_ajax_rop_cart_clear', [self::class, 'cart_clear']);
@@ -558,19 +552,24 @@ class ROP_Ajax
         self::get_cart_summary();
     }
 
-    public static function cart_get()
+    public static function cart_state()
     {
         self::begin_cart_ajax();
         if (! self::verify_cart_nonce()) {
             return;
         }
         self::ensure_wc_runtime();
-        self::debug_cart_context('cart_get');
+        self::debug_cart_context('cart_state');
 
         self::end_cart_ajax_buffer();
         wp_send_json_success([
             'cart' => self::cart_payload(),
         ]);
+    }
+
+    public static function cart_get()
+    {
+        self::cart_state();
     }
 
     public static function cart_add()
@@ -662,7 +661,7 @@ class ROP_Ajax
         WC()->cart->set_session();
 
         self::end_cart_ajax_buffer();
-        wp_send_json_success(['cart' => self::cart_payload()]);
+        wp_send_json_success(['ok' => true]);
     }
 
     public static function cart_remove()
@@ -719,7 +718,7 @@ class ROP_Ajax
         WC()->cart->set_session();
 
         self::end_cart_ajax_buffer();
-        wp_send_json_success(['cart' => self::cart_payload()]);
+        wp_send_json_success(['ok' => true]);
     }
 
     public static function cart_remove_coupon()
