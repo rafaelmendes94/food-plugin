@@ -944,90 +944,106 @@
         await loadCheckoutScreen(appRoot);
     }
 
-    async function refreshCartSummary(appRoot) {
+    async function refreshCartSummary(appRoot, cartPayload) {
         const priceBox = getProductPriceBox(appRoot);
         if (!priceBox) return;
 
-        let total = 'R$ 0,00';
-        try {
-            const response = await ropFetch('rop_cart_get');
-            const payload = normalizeCartResponse(response);
-            if (payload && payload.totals) {
-                total = stripTags(payload.totals.total_html || '') || total;
+        let cart = cartPayload || null;
+        if (!cart) {
+            try {
+                const response = await ROP_API.post('rop_cart_get');
+                cart = normalizeCartResponse(response);
+            } catch (err) {
+                cart = null;
             }
-        } catch (err) {
-            console.warn('ROP cart summary failed', err);
         }
 
-        priceBox.innerHTML = '<i data-lucide="shopping-bag" class="w-5 h-5 mr-2"></i> ' + total;
+        const total = cart && cart.totals && cart.totals.total_html ? stripTags(cart.totals.total_html) : 'R$ 0,00';
+        priceBox.innerHTML = '<i data-lucide="shopping-bag" class="w-5 h-5 mr-2"></i> ' + (total || 'R$ 0,00');
         priceBox.style.cursor = 'pointer';
         priceBox.onclick = function () {
-            if (typeof window.toggleModal === 'function') {
-                window.toggleModal('cart-modal');
-            }
+            if (typeof window.toggleModal === 'function') window.toggleModal('cart-modal');
             renderCartModal(appRoot);
         };
+
+        document.querySelectorAll('[data-rop-cart-badge]').forEach(function (el) {
+            el.innerHTML = cart && cart.totals && cart.totals.total_html ? cart.totals.total_html : 'R$ 0,00';
+        });
 
         ROP_UI.refreshIcons(appRoot);
     }
 
+    const ROP_API = {
+        async post(action, data) {
+            const response = await ropFetch(action, data || {});
+            if (!response || typeof response.success === 'undefined') {
+                return { success: false, data: { message: 'Resposta inválida' } };
+            }
+            return response;
+        },
+    };
 
     function normalizeCartResponse(response) {
-        if (!response || response.success !== true) {
-            return null;
-        }
-        if (response.data && response.data.cart) {
-            return response.data.cart;
-        }
+        if (!response || response.success !== true) return null;
+        if (response.data && response.data.cart) return response.data.cart;
         return response.data || null;
     }
 
     async function fetchCartData() {
-        const response = await ropFetch('rop_cart_get');
-        if (window.ropDebug === true || window.location.search.indexOf('rop_debug=1') !== -1) {
-            console.log('[ROP] cart_get payload', response);
-        }
+        const response = await ROP_API.post('rop_cart_get');
         const payload = normalizeCartResponse(response);
-        if (payload) {
-            return payload;
-        }
+        if (payload) return payload;
         throw new Error('cart_get_failed');
     }
 
-    function renderCartError(list, message, retryFn) {
-        if (!list) return;
-        list.innerHTML = '<div class="rop-cart-state rop-cart-state--error">' + (message || 'Erro ao carregar carrinho.') + '</div>'
-            + '<div class="text-center mt-3"><button type="button" data-rop-cart-retry class="bg-red-500 text-white px-4 py-2 rounded-xl text-xs font-bold">Tentar novamente</button></div>';
-        const retry = list.querySelector('[data-rop-cart-retry]');
-        if (retry && retryFn) retry.onclick = retryFn;
-    }
-
-    function updateCartTotalsUI(modal, data) {
+    function showCartInlineNotice(modal, message, isError) {
         if (!modal) return;
-        const summaryRows = modal.querySelectorAll('.space-y-3 .flex.justify-between');
-        const totalRow = modal.querySelector('.space-y-3 .text-xl.font-bold.text-gray-800');
-        const totals = (data && data.totals) ? data.totals : {};
-        const shippingText = (totals.shipping_html && stripTags(totals.shipping_html) !== 'R$ 0,00') ? totals.shipping_html : 'Grátis';
-
-        if (summaryRows[0]) summaryRows[0].innerHTML = '<span>Subtotal</span><span>' + (totals.subtotal_html || 'R$ 0,00') + '</span>';
-        if (summaryRows[1]) summaryRows[1].innerHTML = '<span>Entrega</span><span class="text-green-500">' + shippingText + '</span>';
-        if (totalRow) totalRow.innerHTML = '<span>Total</span><span>' + (totals.total_html || 'R$ 0,00') + '</span>';
+        let notice = modal.querySelector('[data-rop-cart-inline-notice]');
+        if (!notice) {
+            notice = document.createElement('div');
+            notice.setAttribute('data-rop-cart-inline-notice', '1');
+            notice.className = 'px-6 pt-2 text-xs';
+            const header = modal.querySelector('.border-b.border-gray-50');
+            if (header && header.parentElement) header.parentElement.insertBefore(notice, header.nextSibling);
+        }
+        notice.className = 'px-6 pt-2 text-xs ' + (isError ? 'text-red-500' : 'text-amber-600');
+        notice.textContent = message || '';
     }
 
+    function updateCartTotalsUI(modal, cart) {
+        if (!modal) return;
+        const totals = (cart && cart.totals) ? cart.totals : {};
 
-    function updateFreeShippingUI(modal, data) {
+        const subtotalEl = modal.querySelector('[data-rop-cart-subtotal]');
+        const shippingEl = modal.querySelector('[data-rop-cart-shipping]');
+        const totalEl = modal.querySelector('[data-rop-cart-total]');
+
+        if (subtotalEl) subtotalEl.innerHTML = totals.subtotal_html || 'R$ 0,00';
+        if (shippingEl) shippingEl.innerHTML = totals.shipping_html || 'Grátis';
+        if (totalEl) totalEl.innerHTML = totals.total_html || 'R$ 0,00';
+
+        if (!subtotalEl || !shippingEl || !totalEl) {
+            const summaryRows = modal.querySelectorAll('.space-y-3 .flex.justify-between');
+            const totalRow = modal.querySelector('.space-y-3 .text-xl.font-bold.text-gray-800');
+            if (summaryRows[0]) summaryRows[0].innerHTML = '<span>Subtotal</span><span>' + (totals.subtotal_html || 'R$ 0,00') + '</span>';
+            if (summaryRows[1]) summaryRows[1].innerHTML = '<span>Entrega</span><span class="text-green-500">' + (totals.shipping_html || 'Grátis') + '</span>';
+            if (totalRow) totalRow.innerHTML = '<span>Total</span><span>' + (totals.total_html || 'R$ 0,00') + '</span>';
+        }
+    }
+
+    function updateFreeShippingUI(modal, cart) {
         if (!modal) return;
         const box = modal.querySelector('[data-rop-free-shipping]');
         if (!box) return;
         const text = box.querySelector('div.text-xs') || box.firstElementChild;
         const bar = box.querySelector('[data-rop-free-shipping-bar]');
-        const msg = (data && data.free_shipping_message) ? data.free_shipping_message : '';
-        const progress = Number((data && data.free_shipping_progress) || 0);
+        const msg = (cart && cart.free_shipping_message) ? cart.free_shipping_message : '';
+        const progress = Number((cart && cart.free_shipping_progress) || 0);
         if (text) text.textContent = msg || 'Frete grátis indisponível';
         if (bar) bar.style.width = Math.max(0, Math.min(100, progress * 100)) + '%';
     }
 
-    function renderCouponPills(modal, data, appRoot) {
+    function renderCouponPills(modal, cart, appRoot) {
         if (!modal) return;
         let wrap = modal.querySelector('[data-rop-coupons]');
         if (!wrap) {
@@ -1035,11 +1051,9 @@
             wrap.setAttribute('data-rop-coupons', '1');
             wrap.className = 'mb-2 flex flex-wrap gap-2';
             const notice = modal.querySelector('[data-rop-cart-notices]');
-            if (notice && notice.parentElement) {
-                notice.parentElement.insertBefore(wrap, notice.nextSibling);
-            }
+            if (notice && notice.parentElement) notice.parentElement.insertBefore(wrap, notice.nextSibling);
         }
-        const coupons = (data && Array.isArray(data.coupons)) ? data.coupons : [];
+        const coupons = (cart && Array.isArray(cart.coupons)) ? cart.coupons : [];
         wrap.innerHTML = '';
         coupons.forEach(function (code) {
             const pill = document.createElement('button');
@@ -1047,12 +1061,11 @@
             pill.className = 'text-xs px-3 py-1 rounded-full bg-gray-100 text-gray-700';
             pill.textContent = 'Cupom: ' + code + ' ×';
             pill.onclick = async function () {
-                try {
-                    await ropFetch('rop_cart_remove_coupon', { code: code });
-                    await renderCartModal(appRoot);
-                    await refreshCartSummary(appRoot);
-                } catch (err) {
-                    console.warn('remove coupon failed', err);
+                const res = await ROP_API.post('rop_cart_remove_coupon', { code: code });
+                const cartPayload = normalizeCartResponse(res);
+                if (cartPayload) {
+                    await renderCartModal(appRoot, cartPayload);
+                    await refreshCartSummary(appRoot, cartPayload);
                 }
             };
             wrap.appendChild(pill);
@@ -1061,9 +1074,7 @@
 
     function getCartListContainer(modal) {
         if (!modal) return null;
-        let list = modal.querySelector('#cart-modal .flex-1.overflow-y-auto')
-            || modal.querySelector('.flex-1.overflow-y-auto')
-            || modal.querySelector('.flex-1');
+        let list = modal.querySelector('#cart-modal .flex-1.overflow-y-auto') || modal.querySelector('.flex-1.overflow-y-auto') || modal.querySelector('.flex-1');
         if (list) return list;
 
         const content = modal.querySelector('.modal-content');
@@ -1075,9 +1086,9 @@
             + '<div data-rop-cart-notices class="text-xs mb-2"></div>'
             + '<div class="flex gap-2 mb-3"><input type="text" placeholder="Cupom" class="flex-1 bg-gray-50 border border-gray-100 rounded-2xl px-4 py-3 text-sm"><button type="button" class="bg-red-500 text-white px-6 rounded-2xl font-bold text-sm shadow-md hover:bg-red-600 transition-colors">Aplicar</button></div>'
             + '<div class="space-y-3 text-sm text-gray-500">'
-            + '<div class="flex justify-between"><span>Subtotal</span><span>R$ 0,00</span></div>'
-            + '<div class="flex justify-between"><span>Entrega</span><span class="text-green-500">Grátis</span></div>'
-            + '<div class="flex justify-between text-xl font-bold text-gray-800"><span>Total</span><span>R$ 0,00</span></div>'
+            + '<div class="flex justify-between"><span>Subtotal</span><span data-rop-cart-subtotal>R$ 0,00</span></div>'
+            + '<div class="flex justify-between"><span>Entrega</span><span class="text-green-500" data-rop-cart-shipping>Grátis</span></div>'
+            + '<div class="flex justify-between text-xl font-bold text-gray-800"><span>Total</span><span data-rop-cart-total>R$ 0,00</span></div>'
             + '</div>'
             + '<button type="button" onclick="checkStoreAndCheckout()" class="w-full mt-4 bg-[#2D2929] text-white py-3.5 rounded-2xl font-bold text-sm uppercase shadow-lg">Confirmar Pedido</button>'
             + '</div>');
@@ -1085,19 +1096,32 @@
         return modal.querySelector('.flex-1.overflow-y-auto') || null;
     }
 
+    async function handleCartItemAction(appRoot, modal, list, btn, action, payload) {
+        const row = btn ? btn.closest('.group') : null;
+        if (row) {
+            row.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
+        }
+
+        const res = await ROP_API.post(action, payload || {});
+        const cartPayload = normalizeCartResponse(res);
+
+        if (cartPayload) {
+            await renderCartModal(appRoot, cartPayload);
+            await refreshCartSummary(appRoot, cartPayload);
+        }
+
+        if (!res || res.success !== true) {
+            showCartInlineNotice(modal, (res && res.data && res.data.message) ? res.data.message : 'Não foi possível atualizar, tente novamente.', true);
+        }
+    }
+
     function bindCartActions(appRoot, modal, list) {
         list.querySelectorAll('[data-remove]').forEach(function (btn) {
             btn.onclick = async function () {
                 try {
-                    const res = await ropFetch('rop_cart_remove', { key: btn.getAttribute('data-remove') || '' });
-                    if (!res || res.success !== true) {
-                        showHomeAddFeedback(appRoot, (res && res.data && res.data.message) ? res.data.message : 'Não foi possível remover.');
-                        return;
-                    }
-                    await renderCartModal(appRoot);
-                    await refreshCartSummary(appRoot);
+                    await handleCartItemAction(appRoot, modal, list, btn, 'rop_cart_remove', { key: btn.getAttribute('data-remove') || '' });
                 } catch (err) {
-                    renderCartError(list, 'Falha ao remover item.', function () { renderCartModal(appRoot); });
+                    showCartInlineNotice(modal, 'Não foi possível atualizar, tente novamente.', true);
                 }
             };
         });
@@ -1106,19 +1130,13 @@
             btn.onclick = async function () {
                 const key = btn.getAttribute('data-qty') || '';
                 const action = btn.getAttribute('data-action') || 'plus';
-                const currentEl = btn.parentElement ? btn.parentElement.querySelector('span') : null;
+                const currentEl = btn.parentElement ? btn.parentElement.querySelector('.rop-cart-qty-val') : null;
                 const currentQty = Number((currentEl && currentEl.textContent) || 1);
                 const nextQty = action === 'minus' ? Math.max(1, currentQty - 1) : Math.min(99, currentQty + 1);
                 try {
-                    const res = await ropFetch('rop_cart_set_qty', { key: key, qty: nextQty });
-                    if (!res || res.success !== true) {
-                        showHomeAddFeedback(appRoot, (res && res.data && res.data.message) ? res.data.message : 'Não foi possível atualizar.');
-                        return;
-                    }
-                    await renderCartModal(appRoot);
-                    await refreshCartSummary(appRoot);
+                    await handleCartItemAction(appRoot, modal, list, btn, 'rop_cart_set_qty', { key: key, qty: nextQty });
                 } catch (err) {
-                    renderCartError(list, 'Falha ao atualizar quantidade.', function () { renderCartModal(appRoot); });
+                    showCartInlineNotice(modal, 'Não foi possível atualizar, tente novamente.', true);
                 }
             };
         });
@@ -1129,57 +1147,44 @@
             applyBtn.dataset.boundCoupon = '1';
             applyBtn.addEventListener('click', async function () {
                 const code = couponInput ? (couponInput.value || '') : '';
-                try {
-                    await ropFetch('rop_cart_apply_coupon', { code: code });
-                    await renderCartModal(appRoot);
-                    await refreshCartSummary(appRoot);
-                } catch (err) {
-                    renderCartError(list, 'Falha ao aplicar cupom.', function () { renderCartModal(appRoot); });
+                const res = await ROP_API.post('rop_cart_apply_coupon', { code: code });
+                const cartPayload = normalizeCartResponse(res);
+                if (cartPayload) {
+                    await renderCartModal(appRoot, cartPayload);
+                    await refreshCartSummary(appRoot, cartPayload);
+                }
+                if (res && res.success !== true) {
+                    showCartInlineNotice(modal, (res.data && res.data.message) ? res.data.message : 'Cupom inválido.', false);
                 }
             });
         }
     }
 
-    async function renderCartModal(appRoot) {
+    async function renderCartModal(appRoot, providedCart) {
         const modal = document.getElementById('cart-modal');
         if (!modal) return;
-
         const list = getCartListContainer(modal);
-        if (window.ropDebug === true || window.location.search.indexOf('rop_debug=1') !== -1) {
-            console.log('[ROP] cart container', list);
-        }
-
-        if (!list) {
-            const shell = modal.querySelector('.modal-content') || modal;
-            shell.insertAdjacentHTML('beforeend', '<div class="p-6 text-sm text-red-600">Erro ao localizar a lista do carrinho.</div>');
-            return;
-        }
+        if (!list) return;
 
         list.innerHTML = '<div class="rop-cart-state">Carregando carrinho...</div>';
 
-        let data;
-        try {
-            data = await fetchCartData();
-        } catch (err) {
-            renderCartError(list, 'Não foi possível carregar o carrinho.', function () { renderCartModal(appRoot); });
-            updateCartTotalsUI(modal, { totals: {} });
-            return;
+        let cart = providedCart || null;
+        if (!cart) {
+            try {
+                cart = await fetchCartData();
+            } catch (err) {
+                showCartInlineNotice(modal, 'Não foi possível atualizar, tente novamente.', true);
+                return;
+            }
         }
 
-        const noticesTarget = modal.querySelector('[data-rop-cart-notices]') || list;
-        if (data.notices_html && noticesTarget) {
-            const notices = modal.querySelector('[data-rop-cart-notices]') || document.createElement('div');
-            if (!notices.getAttribute('data-rop-cart-notices')) {
-                notices.setAttribute('data-rop-cart-notices', '1');
-                notices.className = 'px-6 pt-4 text-sm';
-                const header = modal.querySelector('.border-b.border-gray-50');
-                if (header && header.parentElement) header.parentElement.insertBefore(notices, header.nextSibling);
-            }
-            notices.innerHTML = data.notices_html;
+        const noticesTarget = modal.querySelector('[data-rop-cart-notices]');
+        if (noticesTarget) {
+            noticesTarget.innerHTML = cart.notices_html || '';
         }
 
         list.innerHTML = '';
-        if (!Array.isArray(data.items) || data.items.length === 0) {
+        if (!Array.isArray(cart.items) || cart.items.length === 0) {
             list.innerHTML = '<div class="rop-cart-state">Seu carrinho está vazio.</div><div class="text-center"><button type="button" data-rop-open-menu class="bg-red-500 text-white px-4 py-2 rounded-xl text-xs font-bold">Ver cardápio</button></div>';
             const btn = list.querySelector('[data-rop-open-menu]');
             if (btn) {
@@ -1189,13 +1194,13 @@
                 };
             }
         } else {
-            data.items.forEach(function (item) {
+            cart.items.forEach(function (item) {
                 const row = document.createElement('div');
                 row.className = 'flex gap-4 items-center group mb-4';
                 row.innerHTML = ''
-                    + '<div class="w-20 h-20 rounded-2xl overflow-hidden bg-gray-50 border border-gray-100 shrink-0"><img src="' + (item.image_url || '') + '" alt="' + (item.name || 'Produto') + '" class="w-full h-full object-cover"></div>'
+                    + '<div class="w-20 h-20 rounded-2xl overflow-hidden bg-gray-50 border border-gray-100 shrink-0"><img src="' + (item.thumb_url || item.image_url || '') + '" alt="' + (item.name || 'Produto') + '" class="w-full h-full object-cover"></div>'
                     + '<div class="flex-1 min-w-0"><h4 class="font-semibold text-gray-800 text-sm truncate">' + (item.name || 'Produto') + '</h4>'
-                    + (item.extras_text ? ('<p class="text-xs text-gray-400 mt-1 line-clamp-2">' + item.extras_text + '</p>') : '')
+                    + (item.meta_lines && item.meta_lines.length ? ('<p class="text-xs text-gray-400 mt-1 line-clamp-2">' + item.meta_lines.join(', ') + '</p>') : '')
                     + '<div class="flex items-center justify-between mt-2"><span class="font-bold text-sm text-gray-800">' + (item.line_total_html || 'R$ 0,00') + '</span>'
                     + '<div class="flex items-center gap-2"><button data-qty="' + (item.key || '') + '" data-action="minus" class="rop-cart-qty-btn rop-cart-minus" type="button">−</button>'
                     + '<span class="rop-cart-qty-val w-6 text-center text-sm font-semibold">' + Number(item.qty || 1) + '</span>'
@@ -1206,9 +1211,9 @@
             bindCartActions(appRoot, modal, list);
         }
 
-        updateCartTotalsUI(modal, data);
-        updateFreeShippingUI(modal, data);
-        renderCouponPills(modal, data, appRoot);
+        updateCartTotalsUI(modal, cart);
+        updateFreeShippingUI(modal, cart);
+        renderCouponPills(modal, cart, appRoot);
         ROP_UI.refreshIcons(modal);
     }
 

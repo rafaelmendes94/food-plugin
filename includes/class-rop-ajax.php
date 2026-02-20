@@ -560,24 +560,31 @@ class ROP_Ajax
 
     public static function cart_get()
     {
-        check_ajax_referer('rop_ajax', 'nonce');
-        self::ensure_cart_loaded();
+        self::begin_cart_ajax();
+        if (! self::verify_cart_nonce()) {
+            return;
+        }
+        self::ensure_wc_cart();
         self::debug_cart_context('cart_get');
 
-        WC()->cart->calculate_totals();
-        WC()->cart->set_session();
-
-        wp_send_json_success(self::build_cart_payload());
+        self::end_cart_ajax_buffer();
+        wp_send_json_success([
+            'cart' => self::cart_payload(),
+        ]);
     }
 
     public static function cart_add()
     {
-        check_ajax_referer('rop_ajax', 'nonce');
-        self::ensure_cart_loaded();
+        self::begin_cart_ajax();
+        if (! self::verify_cart_nonce()) {
+            return;
+        }
+        self::ensure_wc_cart();
         self::debug_cart_context('cart_add');
 
         if (! function_exists('WC') || ! WC()->cart) {
-            wp_send_json_error(['message' => 'Carrinho indisponível.'], 500);
+            self::end_cart_ajax_buffer();
+            wp_send_json_error(['message' => 'Carrinho indisponível.', 'cart' => self::cart_payload()], 500);
         }
 
         $product_id = absint($_POST['product_id'] ?? 0);
@@ -612,109 +619,135 @@ class ROP_Ajax
 
         $result = self::add_product_to_cart($product_id, $qty, $variation_id, $variations, $extras);
         if (! $result['success']) {
-            wp_send_json_error(['message' => $result['message']], $result['status']);
+            self::end_cart_ajax_buffer();
+            wp_send_json_error(['message' => $result['message'], 'cart' => self::cart_payload()], $result['status']);
         }
 
-        WC()->cart->calculate_totals();
-        WC()->cart->set_session();
+        self::ensure_wc_cart();
 
-        wp_send_json_success(['cart' => self::build_cart_payload()]);
+        self::end_cart_ajax_buffer();
+        wp_send_json_success(['cart' => self::cart_payload()]);
     }
 
     public static function cart_set_qty()
     {
-        check_ajax_referer('rop_ajax', 'nonce');
-        self::ensure_cart_loaded();
+        self::begin_cart_ajax();
+        if (! self::verify_cart_nonce()) {
+            return;
+        }
+        self::ensure_wc_cart();
         self::debug_cart_context('cart_set_qty');
-        wc_clear_notices();
 
         if (! function_exists('WC') || ! WC()->cart) {
-            wp_send_json_error(['message' => 'Carrinho indisponível.'], 500);
+            self::end_cart_ajax_buffer();
+            wp_send_json_error(['message' => 'Carrinho indisponível.', 'cart' => self::cart_payload()], 500);
         }
 
         $key = sanitize_text_field(wp_unslash($_POST['key'] ?? ''));
-        $qty = max(1, absint($_POST['qty'] ?? 1));
+        $qty_raw = wp_unslash($_POST['qty'] ?? '');
+        if (! is_numeric($qty_raw)) {
+            self::end_cart_ajax_buffer();
+            wp_send_json_error(['message' => 'Quantidade inválida.', 'cart' => self::cart_payload()], 400);
+        }
+        $qty = max(1, absint($qty_raw));
 
         $cart_items = WC()->cart->get_cart();
         if ($key === '' || ! isset($cart_items[$key])) {
-            wp_send_json_error(['message' => 'Item inválido.'], 400);
+            self::end_cart_ajax_buffer();
+            wp_send_json_error(['message' => 'Item inválido.', 'cart' => self::cart_payload()], 400);
         }
 
         WC()->cart->set_quantity($key, $qty, true);
         WC()->cart->calculate_totals();
         WC()->cart->set_session();
 
-        wp_send_json_success(['cart' => self::build_cart_payload()]);
+        self::end_cart_ajax_buffer();
+        wp_send_json_success(['cart' => self::cart_payload()]);
     }
 
     public static function cart_remove()
     {
-        check_ajax_referer('rop_ajax', 'nonce');
-        self::ensure_cart_loaded();
+        self::begin_cart_ajax();
+        if (! self::verify_cart_nonce()) {
+            return;
+        }
+        self::ensure_wc_cart();
         self::debug_cart_context('cart_remove');
-        wc_clear_notices();
 
         if (! function_exists('WC') || ! WC()->cart) {
-            wp_send_json_error(['message' => 'Carrinho indisponível.'], 500);
+            self::end_cart_ajax_buffer();
+            wp_send_json_error(['message' => 'Carrinho indisponível.', 'cart' => self::cart_payload()], 500);
         }
 
         $key = sanitize_text_field(wp_unslash($_POST['key'] ?? ''));
         $cart_items = WC()->cart->get_cart();
         if ($key === '' || ! isset($cart_items[$key])) {
-            wp_send_json_error(['message' => 'Item inválido.'], 400);
+            self::end_cart_ajax_buffer();
+            wp_send_json_error(['message' => 'Item inválido.', 'cart' => self::cart_payload()], 400);
         }
 
         WC()->cart->remove_cart_item($key);
         WC()->cart->calculate_totals();
         WC()->cart->set_session();
 
-        wp_send_json_success(['cart' => self::build_cart_payload()]);
+        self::end_cart_ajax_buffer();
+        wp_send_json_success(['cart' => self::cart_payload()]);
     }
 
     public static function cart_apply_coupon()
     {
-        check_ajax_referer('rop_ajax', 'nonce');
-        self::ensure_cart_loaded();
+        self::begin_cart_ajax();
+        if (! self::verify_cart_nonce()) {
+            return;
+        }
+        self::ensure_wc_cart();
         self::debug_cart_context('cart_apply_coupon');
 
         if (! function_exists('WC') || ! WC()->cart) {
-            wp_send_json_error(['message' => 'Carrinho indisponível.'], 500);
+            self::end_cart_ajax_buffer();
+            wp_send_json_error(['message' => 'Carrinho indisponível.', 'cart' => self::cart_payload()], 500);
         }
 
         $code = sanitize_text_field(wp_unslash($_POST['code'] ?? ''));
         if ($code === '') {
-            wp_send_json_error(['message' => 'Informe um cupom.'], 400);
+            self::end_cart_ajax_buffer();
+            wp_send_json_error(['message' => 'Informe um cupom.', 'cart' => self::cart_payload()], 400);
         }
 
-        wc_clear_notices();
         WC()->cart->apply_coupon($code);
         WC()->cart->calculate_totals();
         WC()->cart->set_session();
 
-        wp_send_json_success(['cart' => self::build_cart_payload()]);
+        self::end_cart_ajax_buffer();
+        wp_send_json_success(['cart' => self::cart_payload()]);
     }
 
     public static function cart_remove_coupon()
     {
-        check_ajax_referer('rop_ajax', 'nonce');
-        self::ensure_cart_loaded();
+        self::begin_cart_ajax();
+        if (! self::verify_cart_nonce()) {
+            return;
+        }
+        self::ensure_wc_cart();
         self::debug_cart_context('cart_remove_coupon');
 
         if (! function_exists('WC') || ! WC()->cart) {
-            wp_send_json_error(['message' => 'Carrinho indisponível.'], 500);
+            self::end_cart_ajax_buffer();
+            wp_send_json_error(['message' => 'Carrinho indisponível.', 'cart' => self::cart_payload()], 500);
         }
 
         $code = sanitize_text_field(wp_unslash($_POST['code'] ?? ''));
         if ($code === '') {
-            wp_send_json_error(['message' => 'Cupom inválido.'], 400);
+            self::end_cart_ajax_buffer();
+            wp_send_json_error(['message' => 'Cupom inválido.', 'cart' => self::cart_payload()], 400);
         }
 
-        wc_clear_notices();
         WC()->cart->remove_coupon($code);
         WC()->cart->calculate_totals();
         WC()->cart->set_session();
 
-        wp_send_json_success(self::build_cart_payload());
+        self::end_cart_ajax_buffer();
+        wp_send_json_success(['cart' => self::cart_payload()]);
     }
 
     public static function cart_clear()
@@ -1220,7 +1253,7 @@ class ROP_Ajax
     }
 
 
-    private static function build_cart_payload()
+    private static function cart_payload()
     {
         if (! function_exists('WC') || ! WC()->cart) {
             return [
@@ -1278,20 +1311,28 @@ class ROP_Ajax
                 'key' => sanitize_text_field((string) $key),
                 'product_id' => (int) ($item['product_id'] ?? 0),
                 'name' => sanitize_text_field($product->get_name()),
-                'image_url' => esc_url_raw($image_url),
+                'thumb_url' => esc_url_raw($image_url),
                 'qty' => $qty,
-                'unit_price_html' => wp_strip_all_tags(WC()->cart->get_product_price($product)),
+                'price_raw' => (float) $product->get_price(),
+                'price_html' => wp_strip_all_tags(WC()->cart->get_product_price($product)),
+                'line_total_raw' => (float) wc_format_decimal($item['line_total'] ?? 0),
                 'line_total_html' => wp_strip_all_tags(WC()->cart->get_product_subtotal($product, $qty)),
-                'extras_text' => implode(', ', array_values(array_filter(array_unique($extras)))),
+                'meta_lines' => array_values(array_filter(array_unique($extras))),
             ];
         }
 
         $subtotal_raw = (float) WC()->cart->get_subtotal();
         $shipping_raw = (float) WC()->cart->get_shipping_total();
         $discount_raw = (float) WC()->cart->get_discount_total();
-        $total_raw = method_exists(WC()->cart, 'get_total') ? (float) WC()->cart->get_total('edit') : (float) WC()->cart->total;
-        if ($total_raw <= 0 && isset(WC()->cart->total)) {
-            $total_raw = (float) WC()->cart->total;
+        $maybe_total = method_exists(WC()->cart, 'get_total') ? WC()->cart->get_total('edit') : null;
+        $total_raw = is_numeric($maybe_total) ? (float) $maybe_total : (float) WC()->cart->total;
+        if ($total_raw <= 0 && WC()->cart->get_cart_contents_count() > 0 && defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('rop cart_debug ' . wp_json_encode([
+                'cart_total_prop' => WC()->cart->total,
+                'get_total_edit' => $maybe_total,
+                'get_subtotal' => WC()->cart->get_subtotal(),
+                'count' => WC()->cart->get_cart_contents_count(),
+            ]));
         }
 
         $threshold = self::get_free_shipping_threshold();
@@ -1372,6 +1413,60 @@ class ROP_Ajax
         return $threshold;
     }
 
+
+
+    private static function verify_cart_nonce()
+    {
+        if (! check_ajax_referer('rop_ajax', 'nonce', false)) {
+            self::end_cart_ajax_buffer();
+            wp_send_json_error(['message' => 'Nonce inválido.', 'cart' => self::cart_payload()], 403);
+            return false;
+        }
+        return true;
+    }
+
+    private static function begin_cart_ajax()
+    {
+        nocache_headers();
+        if (function_exists('wc_clear_notices')) {
+            wc_clear_notices();
+        }
+        ob_start();
+    }
+
+    private static function end_cart_ajax_buffer()
+    {
+        $junk = ob_get_clean();
+        if (! empty($junk) && defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('rop ajax_junk: ' . wp_strip_all_tags((string) $junk));
+        }
+    }
+
+    private static function ensure_wc_cart()
+    {
+        if (! function_exists('WC')) {
+            return;
+        }
+
+        if (null === WC()->session && method_exists(WC(), 'initialize_session')) {
+            WC()->initialize_session();
+        }
+
+        if (null === WC()->customer && method_exists(WC(), 'initialize_customer')) {
+            WC()->initialize_customer(get_current_user_id(), true);
+        }
+
+        if (null === WC()->cart && method_exists(WC(), 'initialize_cart')) {
+            WC()->initialize_cart();
+        }
+
+        if (WC()->cart && method_exists(WC()->cart, 'get_cart')) {
+            WC()->cart->get_cart();
+            WC()->cart->calculate_totals();
+            WC()->cart->set_session();
+        }
+    }
+
     private static function debug_cart_context($action)
     {
         if (! defined('WP_DEBUG') || ! WP_DEBUG || ! class_exists('ROP_Logger') || ! method_exists('ROP_Logger', 'info')) {
@@ -1396,32 +1491,7 @@ class ROP_Ajax
 
     private static function ensure_cart_loaded()
     {
-        if (! function_exists('WC')) {
-            return;
-        }
-
-        if (function_exists('wc_load_cart')) {
-            wc_load_cart();
-        }
-
-        if (null === WC()->session && method_exists(WC(), 'initialize_session')) {
-            WC()->initialize_session();
-        }
-
-        if (null === WC()->customer && method_exists(WC(), 'initialize_customer')) {
-            WC()->initialize_customer(get_current_user_id(), true);
-        }
-
-        if (null === WC()->cart && method_exists(WC(), 'initialize_cart')) {
-            WC()->initialize_cart();
-        }
-
-        if (null === WC()->cart && function_exists('wc_load_cart')) {
-            wc_load_cart();
-        }
-
-        if (WC()->cart && method_exists(WC()->cart, 'get_cart')) {
-            WC()->cart->get_cart();
-        }
+        self::ensure_wc_cart();
     }
 }
+
