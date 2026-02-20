@@ -165,6 +165,87 @@
         if (sloganEl && store.slogan) sloganEl.textContent = store.slogan;
     }
 
+
+    function getBrandMarkup(store) {
+        const hasLogo = !!(store && store.has_logo && store.logo_url);
+        if (hasLogo) {
+            return '<img class="rop-store-logo" src="' + (store.logo_url || '') + '" alt="' + (store.store_name || 'Foodgo') + '" style="max-height:44px;width:auto;object-fit:contain;"/>';
+        }
+        return (store && store.store_name) ? store.store_name : 'Foodgo';
+    }
+
+    function ensureScreenHeader(appRoot, screenId, title) {
+        const screen = appRoot ? appRoot.querySelector('#' + screenId) : null;
+        if (!screen) return;
+
+        let header = screen.querySelector('[data-rop-screen-header="1"]');
+        if (!header) {
+            header = document.createElement('div');
+            header.setAttribute('data-rop-screen-header', '1');
+            header.className = 'p-6 flex justify-between items-center';
+            screen.prepend(header);
+        }
+
+        header.innerHTML = ''
+            + '<div><h1 class="text-2xl text-gray-800 logo-font">' + getBrandMarkup(state.store || {}) + '</h1><p class="text-gray-400 text-xs">' + ((state.store && state.store.slogan) || '') + '</p></div>'
+            + '<div class="text-right"><button type="button" data-rop-logout-avatar class="w-12 h-12 rounded-full overflow-hidden border-2 border-white shadow-sm cursor-pointer active:scale-95 transition-transform hover:shadow-md"><img src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=150" alt="Usuário" class="w-full h-full object-cover"></button><div class="rop-logout-hint">Toque para sair</div></div>';
+
+        const btn = header.querySelector('[data-rop-logout-avatar]');
+        if (btn) {
+            btn.onclick = function () {
+                if (typeof window.toggleModal === 'function') {
+                    window.toggleModal('logout-modal');
+                }
+            };
+        }
+
+        if (title) {
+            let t = screen.querySelector('[data-rop-screen-title="1"]');
+            if (!t) {
+                t = document.createElement('h2');
+                t.setAttribute('data-rop-screen-title', '1');
+                t.className = 'px-6 text-xl font-bold text-gray-800';
+                header.insertAdjacentElement('afterend', t);
+            }
+            t.textContent = title;
+        }
+    }
+
+    function setupStoreClosedModal(appRoot) {
+        const modal = document.getElementById('store-closed-modal');
+        if (!modal) return;
+        const box = modal.querySelector('.center-modal-content');
+        if (!box) return;
+
+        if (!box.querySelector('[data-rop-close-x="1"]')) {
+            const x = document.createElement('button');
+            x.type = 'button';
+            x.setAttribute('data-rop-close-x', '1');
+            x.className = 'absolute top-4 right-4 text-gray-400 hover:text-gray-700';
+            x.innerHTML = '<i data-lucide="x" class="w-5 h-5"></i>';
+            x.onclick = function () { if (typeof window.closeStoreClosedModal === 'function') window.closeStoreClosedModal(); };
+            box.appendChild(x);
+        }
+
+        let p = box.querySelector('p');
+        if (!p) {
+            p = document.createElement('p');
+            p.className = 'text-sm text-gray-600 mb-4';
+            box.insertBefore(p, box.querySelector('button'));
+        }
+
+        const action = box.querySelector('button');
+        if (action) {
+            action.textContent = 'Ver Cardápio';
+            action.onclick = function () {
+                if (typeof window.closeStoreClosedModal === 'function') window.closeStoreClosedModal();
+                if (typeof window.navigateTo === 'function') window.navigateTo('home-screen');
+            };
+        }
+
+        updateClosedModalText((state.bootstrap && state.bootstrap.hours && state.bootstrap.hours.human_status) || '');
+    }
+
     function updateInfoTexts(appRoot, store) {
         const infoScreen = appRoot.querySelector('#info-screen');
         if (!infoScreen) return;
@@ -184,8 +265,8 @@
         if (!modal) return;
         const p = modal.querySelector('p');
         if (!p) return;
-        const base = 'Estamos fechados no momento. Navegue pelo cardápio!';
-        p.textContent = humanStatus ? (base + ' ' + humanStatus) : base;
+        const base = 'Estamos fechados agora.';
+        p.textContent = humanStatus ? (base + ' ' + humanStatus) : (base + ' Fechado — abrimos em breve.');
     }
 
     function updateEtaTexts(appRoot, etaText) {
@@ -1690,18 +1771,45 @@
                 return;
             }
 
-            const a = res.data.account || {};
+            const user = res.data.user || {};
+            const billing = res.data.billing || {};
+            const shipping = res.data.shipping || {};
             area.innerHTML = ''
                 + '<div class="bg-white rounded-[24px] p-5 border border-gray-100 space-y-3">'
-                + '<input data-rop-account="billing_first_name" class="custom-input" placeholder="Nome" value="' + (a.billing_first_name || '') + '">'
-                + '<input data-rop-account="billing_last_name" class="custom-input" placeholder="Sobrenome" value="' + (a.billing_last_name || '') + '">'
-                + '<input data-rop-account="billing_phone" class="custom-input" placeholder="Telefone" value="' + (a.billing_phone || '') + '">'
-                + '<input data-rop-account="billing_address_1" class="custom-input" placeholder="Rua e número" value="' + (a.billing_address_1 || '') + '">'
-                + '<input data-rop-account="billing_address_2" class="custom-input" placeholder="Complemento" value="' + (a.billing_address_2 || '') + '">'
-                + '<input data-rop-account="billing_city" class="custom-input" placeholder="Cidade" value="' + (a.billing_city || '') + '">'
-                + '<input data-rop-account="billing_postcode" class="custom-input" placeholder="CEP" value="' + (a.billing_postcode || '') + '">'
+                + '<input data-rop-account="billing_first_name" class="custom-input" placeholder="Nome" value="' + (billing.billing_first_name || user.first_name || '') + '">'
+                + '<input data-rop-account="billing_last_name" class="custom-input" placeholder="Sobrenome" value="' + (billing.billing_last_name || user.last_name || '') + '">'
+                + '<input data-rop-account="billing_phone" class="custom-input" placeholder="Telefone" value="' + (billing.billing_phone || '') + '">'
+                + '<input data-rop-account="billing_address_1" class="custom-input" placeholder="Rua e número" value="' + (billing.billing_address_1 || '') + '">'
+                + '<input data-rop-account="billing_address_2" class="custom-input" placeholder="Complemento" value="' + (billing.billing_address_2 || '') + '">'
+                + '<input data-rop-account="billing_city" class="custom-input" placeholder="Cidade" value="' + (billing.billing_city || '') + '">'
+                + '<input data-rop-account="billing_postcode" class="custom-input" placeholder="CEP" value="' + (billing.billing_postcode || '') + '">'
+                + '<input data-rop-account="shipping_first_name" class="custom-input" placeholder="Nome entrega" value="' + (shipping.shipping_first_name || '') + '">'
+                + '<input data-rop-account="shipping_last_name" class="custom-input" placeholder="Sobrenome entrega" value="' + (shipping.shipping_last_name || '') + '">'
+                + '<input data-rop-account="shipping_address_1" class="custom-input" placeholder="Endereço entrega" value="' + (shipping.shipping_address_1 || '') + '">'
                 + '<button type="button" data-rop-account-save class="w-full bg-red-500 text-white rounded-2xl py-3 font-bold">Salvar</button>'
+                + '<div class="pt-2 border-t border-gray-100">'
+                + '<p class="text-sm font-semibold text-gray-700 mb-2">Trocar Senha</p>'
+                + '<input type="password" data-rop-pass="current" class="custom-input" placeholder="Senha atual">'
+                + '<input type="password" data-rop-pass="new" class="custom-input" placeholder="Nova senha">'
+                + '<input type="password" data-rop-pass="confirm" class="custom-input" placeholder="Confirmar nova senha">'
+                + '<button type="button" data-rop-pass-save class="w-full bg-[#2D2929] text-white rounded-2xl py-3 font-bold mt-2">Atualizar senha</button>'
+                + '</div>'
                 + '</div>';
+
+            const passBtn = area.querySelector('[data-rop-pass-save]');
+            if (passBtn) {
+                passBtn.onclick = async function () {
+                    const current = (area.querySelector('[data-rop-pass=\"current\"]') || {}).value || '';
+                    const n1 = (area.querySelector('[data-rop-pass=\"new\"]') || {}).value || '';
+                    const n2 = (area.querySelector('[data-rop-pass=\"confirm\"]') || {}).value || '';
+                    if (!current || !n1 || n1 !== n2) {
+                        showHomeAddFeedback(appRoot, 'Senha inválida');
+                        return;
+                    }
+                    const pr = await ropFetch('rop_account_change_password', { current_password: current, new_password: n1 });
+                    showHomeAddFeedback(appRoot, (pr && pr.success) ? 'Senha atualizada' : 'Erro ao atualizar senha');
+                };
+            }
 
             const saveBtn = area.querySelector('[data-rop-account-save]');
             if (saveBtn) {
@@ -1916,6 +2024,7 @@
                 updateClosedModalText((bootstrap.data.hours && bootstrap.data.hours.human_status) || '');
                 updateEtaTexts(appRoot, (bootstrap.data.eta && bootstrap.data.eta.text) || '');
                 applyCheckoutLabels(appRoot, bootstrap.data.checkout || {});
+                setupStoreClosedModal(appRoot);
 
                 if (bootstrap.data.hours && !bootstrap.data.hours.is_open) {
                     if (typeof window.openStoreClosedModal === 'function') window.openStoreClosedModal();
@@ -1983,6 +2092,7 @@
                 }
 
                 if (screenId === 'orders-screen') {
+                    ensureScreenHeader(appRoot, 'orders-screen', 'Meus Pedidos');
                     ropFetch('rop_orders_list').then(function (res) {
                         if (res && res.success && res.data && Array.isArray(res.data.orders)) {
                             renderOrdersScreen(appRoot, res.data.orders);
@@ -1993,7 +2103,12 @@
                 }
 
                 if (screenId === 'account-screen') {
+                    ensureScreenHeader(appRoot, 'account-screen', 'Minha Conta');
                     loadAccountScreen(appRoot);
+                }
+
+                if (screenId === 'info-screen') {
+                    ensureScreenHeader(appRoot, 'info-screen', 'Informações');
                 }
 
                 updateFloatingButtonVisibility(appRoot);
@@ -2018,6 +2133,13 @@
         };
 
         appRoot.classList.add('rop-ready-product');
+        const homeAvatar = appRoot.querySelector('#home-screen header [onclick*=\"logout-modal\"]');
+        if (homeAvatar && !homeAvatar.parentElement.querySelector('.rop-logout-hint')) {
+            const hint = document.createElement('div');
+            hint.className = 'rop-logout-hint';
+            hint.textContent = 'Toque para sair';
+            homeAvatar.parentElement.appendChild(hint);
+        }
         updateFloatingButtonVisibility(appRoot);
         bindCartOpenTriggers(appRoot);
         refreshCartSummary(appRoot);

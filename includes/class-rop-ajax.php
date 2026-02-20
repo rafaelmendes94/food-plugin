@@ -52,6 +52,7 @@ class ROP_Ajax
         add_action('wp_ajax_rop_account_get', [self::class, 'account_get']);
         add_action('wp_ajax_nopriv_rop_account_get', [self::class, 'account_get']);
         add_action('wp_ajax_rop_account_update', [self::class, 'account_update']);
+        add_action('wp_ajax_rop_account_change_password', [self::class, 'account_change_password']);
         add_action('wp_ajax_rop_order_details', [self::class, 'order_details']);
         add_action('wp_ajax_rop_render_single_product', [self::class, 'render_single_product']);
         add_action('wp_ajax_nopriv_rop_render_single_product', [self::class, 'render_single_product']);
@@ -1075,20 +1076,28 @@ class ROP_Ajax
         }
 
         $user = wp_get_current_user();
+        $uid = (int) $user->ID;
+
+        $billing = [];
+        foreach (['first_name', 'last_name', 'phone', 'address_1', 'address_2', 'city', 'state', 'postcode'] as $field) {
+            $billing['billing_' . $field] = sanitize_text_field(get_user_meta($uid, 'billing_' . $field, true));
+        }
+
+        $shipping = [];
+        foreach (['first_name', 'last_name', 'address_1', 'address_2', 'city', 'state', 'postcode'] as $field) {
+            $shipping['shipping_' . $field] = sanitize_text_field(get_user_meta($uid, 'shipping_' . $field, true));
+        }
 
         wp_send_json_success([
             'logged_in' => true,
-            'account' => [
+            'user' => [
+                'first_name' => sanitize_text_field($user->first_name),
+                'last_name' => sanitize_text_field($user->last_name),
                 'display_name' => sanitize_text_field($user->display_name),
-                'email' => sanitize_email($user->user_email),
-                'billing_first_name' => sanitize_text_field(get_user_meta($user->ID, 'billing_first_name', true)),
-                'billing_last_name' => sanitize_text_field(get_user_meta($user->ID, 'billing_last_name', true)),
-                'billing_phone' => sanitize_text_field(get_user_meta($user->ID, 'billing_phone', true)),
-                'billing_address_1' => sanitize_text_field(get_user_meta($user->ID, 'billing_address_1', true)),
-                'billing_address_2' => sanitize_text_field(get_user_meta($user->ID, 'billing_address_2', true)),
-                'billing_city' => sanitize_text_field(get_user_meta($user->ID, 'billing_city', true)),
-                'billing_postcode' => sanitize_text_field(get_user_meta($user->ID, 'billing_postcode', true)),
+                'user_email' => sanitize_email($user->user_email),
             ],
+            'billing' => $billing,
+            'shipping' => $shipping,
         ]);
     }
 
@@ -1101,22 +1110,56 @@ class ROP_Ajax
         }
 
         $user_id = get_current_user_id();
-        $fields = [
-            'billing_first_name',
-            'billing_last_name',
-            'billing_phone',
-            'billing_address_1',
-            'billing_address_2',
-            'billing_city',
-            'billing_postcode',
+        $meta_fields = [
+            'billing_first_name', 'billing_last_name', 'billing_phone', 'billing_address_1', 'billing_address_2', 'billing_city', 'billing_state', 'billing_postcode',
+            'shipping_first_name', 'shipping_last_name', 'shipping_address_1', 'shipping_address_2', 'shipping_city', 'shipping_state', 'shipping_postcode',
         ];
 
-        foreach ($fields as $field) {
+        foreach ($meta_fields as $field) {
             $value = sanitize_text_field(wp_unslash($_POST[$field] ?? ''));
             update_user_meta($user_id, $field, $value);
         }
 
+        $first_name = sanitize_text_field(wp_unslash($_POST['first_name'] ?? ''));
+        $last_name = sanitize_text_field(wp_unslash($_POST['last_name'] ?? ''));
+        if ($first_name !== '' || $last_name !== '') {
+            wp_update_user([
+                'ID' => $user_id,
+                'first_name' => $first_name,
+                'last_name' => $last_name,
+                'display_name' => trim($first_name . ' ' . $last_name),
+            ]);
+        }
+
         wp_send_json_success(['message' => 'Salvo com sucesso.']);
+    }
+
+
+    public static function account_change_password()
+    {
+        check_ajax_referer('rop_ajax', 'nonce');
+
+        if (! is_user_logged_in()) {
+            wp_send_json_error(['message' => 'Faça login para alterar senha.'], 401);
+        }
+
+        $user = wp_get_current_user();
+        $current = (string) wp_unslash($_POST['current_password'] ?? '');
+        $new_password = (string) wp_unslash($_POST['new_password'] ?? '');
+
+        if ($current === '' || $new_password === '' || strlen($new_password) < 6) {
+            wp_send_json_error(['message' => 'Senha inválida.'], 400);
+        }
+
+        if (! wp_check_password($current, $user->user_pass, $user->ID)) {
+            wp_send_json_error(['message' => 'Senha atual incorreta.'], 400);
+        }
+
+        wp_set_password($new_password, $user->ID);
+        wp_set_auth_cookie($user->ID, true);
+        wp_set_current_user($user->ID);
+
+        wp_send_json_success(['message' => 'Senha atualizada com sucesso.']);
     }
 
     public static function order_details()
