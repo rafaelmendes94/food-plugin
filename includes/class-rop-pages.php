@@ -63,14 +63,6 @@ class ROP_Pages
 
         $html = preg_replace('/<div\s+class="rop-app"\s+data-rop-app="1"/', '<div class="rop-app" data-rop-app="1" style="' . $style . '"', $html, 1);
 
-        $store_name = esc_html($settings['store_name'] ?: 'Foodgo');
-        $logo_url = esc_url($settings['logo_url'] ?? '');
-        if ($logo_url) {
-            $html = str_replace('<h1 class="text-3xl text-gray-800 logo-font">Foodgo</h1>', '<h1 class="text-3xl text-gray-800 logo-font"><img src="' . $logo_url . '" alt="' . $store_name . '" style="max-height:44px; width:auto; object-fit:contain;"/></h1>', $html);
-        } else {
-            $html = str_replace('<h1 class="text-3xl text-gray-800 logo-font">Foodgo</h1>', '<h1 class="text-3xl text-gray-800 logo-font">' . $store_name . '</h1>', $html);
-        }
-
         $html = str_replace('overflow-x-auto no-scrollbar mb-6 pb-2', 'overflow-x-auto no-scrollbar mb-6 pb-2 rop-hidden-until-hydrated', $html);
         $html = str_replace('grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 pb-32', 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 pb-32 rop-hidden-until-hydrated', $html);
         $html = str_replace('id="filter-modal" class="hidden fixed inset-0 z-[150] h-full w-full modal-overlay"', 'id="filter-modal" class="hidden fixed inset-0 z-[150] h-full w-full modal-overlay rop-hidden-until-hydrated"', $html);

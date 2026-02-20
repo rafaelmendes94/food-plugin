@@ -90,6 +90,8 @@ class ROP_Ajax
         }
 
         $store = ROP_Store_Settings::get_all();
+        $store['logo_url'] = esc_url_raw($store['logo_url'] ?? '');
+        $store['has_logo'] = ! empty($store['logo_url']);
         $hours = [
             'is_open' => (bool) ROP_Hours::is_open(),
             'human_status' => sanitize_text_field(ROP_Hours::human_status()),

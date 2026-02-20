@@ -132,7 +132,34 @@
         if (!homeScreen) return;
 
         const nameEl = homeScreen.querySelector('h1.logo-font');
-        if (nameEl && store.store_name) nameEl.textContent = store.store_name;
+        if (nameEl) {
+            const hasLogo = !!(store && store.has_logo && store.logo_url);
+            let logoImg = nameEl.querySelector('img.rop-store-logo');
+
+            if (hasLogo) {
+                if (!logoImg) {
+                    logoImg = document.createElement('img');
+                    logoImg.className = 'rop-store-logo';
+                    logoImg.alt = (store.store_name || 'Foodgo');
+                    logoImg.style.maxHeight = '44px';
+                    logoImg.style.width = 'auto';
+                    logoImg.style.objectFit = 'contain';
+                    nameEl.innerHTML = '';
+                    nameEl.appendChild(logoImg);
+                }
+
+                if (logoImg.src !== String(store.logo_url || '')) {
+                    logoImg.src = String(store.logo_url || '');
+                }
+            } else {
+                if (logoImg) {
+                    logoImg.remove();
+                }
+                if (store && store.store_name) {
+                    nameEl.textContent = store.store_name;
+                }
+            }
+        }
 
         const sloganEl = homeScreen.querySelector('p.text-gray-400.text-xs');
         if (sloganEl && store.slogan) sloganEl.textContent = store.slogan;
@@ -1882,6 +1909,7 @@
             if (bootstrap && bootstrap.success && bootstrap.data) {
                 state.bootstrap = bootstrap.data;
                 state.store = bootstrap.data.store || {};
+                if (typeof state.store.has_logo === 'undefined') { state.store.has_logo = !!state.store.logo_url; }
                 applyStoreVars(appRoot, state.store);
                 updateHomeTexts(appRoot, state.store);
                 renderInfoScreen(appRoot, bootstrap.data);
