@@ -256,6 +256,18 @@
         }
     }
 
+    function fixAccountTitlePosition(appRoot) {
+        const screen = appRoot ? appRoot.querySelector('#account-screen') : null;
+        if (!screen) return;
+        const header = screen.querySelector('[data-rop-screen-header="1"]');
+        const title = screen.querySelector('[data-rop-screen-title="1"]');
+        const area = screen.querySelector('.p-6:not([data-rop-screen-header="1"])') || screen.querySelector('.p-6');
+        if (!header || !title || !area) return;
+        if (title.nextElementSibling !== area) {
+            screen.insertBefore(title, area);
+        }
+    }
+
     function setupStoreClosedModal(appRoot) {
         const modal = document.getElementById('store-closed-modal');
         if (!modal) return;
@@ -939,8 +951,9 @@
         let total = 'R$ 0,00';
         try {
             const response = await ropFetch('rop_cart_get');
-            if (response && response.success && response.data && response.data.totals) {
-                total = stripTags(response.data.totals.total_html || '') || total;
+            const payload = normalizeCartResponse(response);
+            if (payload && payload.totals) {
+                total = stripTags(payload.totals.total_html || '') || total;
             }
         } catch (err) {
             console.warn('ROP cart summary failed', err);
@@ -958,13 +971,25 @@
         ROP_UI.refreshIcons(appRoot);
     }
 
+
+    function normalizeCartResponse(response) {
+        if (!response || response.success !== true) {
+            return null;
+        }
+        if (response.data && response.data.cart) {
+            return response.data.cart;
+        }
+        return response.data || null;
+    }
+
     async function fetchCartData() {
         const response = await ropFetch('rop_cart_get');
         if (window.ropDebug === true || window.location.search.indexOf('rop_debug=1') !== -1) {
             console.log('[ROP] cart_get payload', response);
         }
-        if (response && response.success && response.data) {
-            return response.data;
+        const payload = normalizeCartResponse(response);
+        if (payload) {
+            return payload;
         }
         throw new Error('cart_get_failed');
     }
@@ -1065,8 +1090,8 @@
             btn.onclick = async function () {
                 try {
                     const res = await ropFetch('rop_cart_remove', { key: btn.getAttribute('data-remove') || '' });
-                    if (res && res.success === false) {
-                        showHomeAddFeedback(appRoot, (res.data && res.data.message) ? res.data.message : 'Não foi possível remover.');
+                    if (!res || res.success !== true) {
+                        showHomeAddFeedback(appRoot, (res && res.data && res.data.message) ? res.data.message : 'Não foi possível remover.');
                         return;
                     }
                     await renderCartModal(appRoot);
@@ -1086,8 +1111,8 @@
                 const nextQty = action === 'minus' ? Math.max(1, currentQty - 1) : Math.min(99, currentQty + 1);
                 try {
                     const res = await ropFetch('rop_cart_set_qty', { key: key, qty: nextQty });
-                    if (res && res.success === false) {
-                        showHomeAddFeedback(appRoot, (res.data && res.data.message) ? res.data.message : 'Não foi possível atualizar.');
+                    if (!res || res.success !== true) {
+                        showHomeAddFeedback(appRoot, (res && res.data && res.data.message) ? res.data.message : 'Não foi possível atualizar.');
                         return;
                     }
                     await renderCartModal(appRoot);
@@ -1172,10 +1197,10 @@
                     + '<div class="flex-1 min-w-0"><h4 class="font-semibold text-gray-800 text-sm truncate">' + (item.name || 'Produto') + '</h4>'
                     + (item.extras_text ? ('<p class="text-xs text-gray-400 mt-1 line-clamp-2">' + item.extras_text + '</p>') : '')
                     + '<div class="flex items-center justify-between mt-2"><span class="font-bold text-sm text-gray-800">' + (item.line_total_html || 'R$ 0,00') + '</span>'
-                    + '<div class="flex items-center gap-2"><button data-qty="' + (item.key || '') + '" data-action="minus" class="rop-cart-qty-btn rop-cart-minus"><i data-lucide="minus" class="w-3 h-3"></i></button>'
-                    + '<span class="w-6 text-center text-sm font-semibold">' + Number(item.qty || 1) + '</span>'
-                    + '<button data-qty="' + (item.key || '') + '" data-action="plus" class="rop-cart-qty-btn rop-cart-plus"><i data-lucide="plus" class="w-3 h-3"></i></button>'
-                    + '<button data-remove="' + (item.key || '') + '" class="rop-cart-remove"><i data-lucide="trash-2" class="w-3 h-3"></i></button></div></div></div>';
+                    + '<div class="flex items-center gap-2"><button data-qty="' + (item.key || '') + '" data-action="minus" class="rop-cart-qty-btn rop-cart-minus" type="button">−</button>'
+                    + '<span class="rop-cart-qty-val w-6 text-center text-sm font-semibold">' + Number(item.qty || 1) + '</span>'
+                    + '<button data-qty="' + (item.key || '') + '" data-action="plus" class="rop-cart-qty-btn rop-cart-plus" type="button">+</button>'
+                    + '<button data-remove="' + (item.key || '') + '" class="rop-cart-remove" type="button" aria-label="Remover">×</button></div></div></div>';
                 list.appendChild(row);
             });
             bindCartActions(appRoot, modal, list);
@@ -1870,6 +1895,7 @@
         if (!screen) return;
 
         const area = screen.querySelector('.p-6:not([data-rop-screen-header="1"])') || screen.querySelector('.p-6') || screen;
+        fixAccountTitlePosition(appRoot);
         area.innerHTML = '<div class="rop-cart-state">Carregando conta...</div>';
 
         try {
@@ -2236,6 +2262,7 @@
 
                 if (screenId === 'account-screen') {
                     ensureScreenHeader(appRoot, 'account-screen', 'Minha Conta');
+                    fixAccountTitlePosition(appRoot);
                     loadAccountScreen(appRoot);
                 }
 

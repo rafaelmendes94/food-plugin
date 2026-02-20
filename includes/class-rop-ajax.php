@@ -618,7 +618,7 @@ class ROP_Ajax
         WC()->cart->calculate_totals();
         WC()->cart->set_session();
 
-        wp_send_json_success(self::build_cart_payload());
+        wp_send_json_success(['cart' => self::build_cart_payload()]);
     }
 
     public static function cart_set_qty()
@@ -644,7 +644,7 @@ class ROP_Ajax
         WC()->cart->calculate_totals();
         WC()->cart->set_session();
 
-        wp_send_json_success(self::build_cart_payload());
+        wp_send_json_success(['cart' => self::build_cart_payload()]);
     }
 
     public static function cart_remove()
@@ -668,7 +668,7 @@ class ROP_Ajax
         WC()->cart->calculate_totals();
         WC()->cart->set_session();
 
-        wp_send_json_success(self::build_cart_payload());
+        wp_send_json_success(['cart' => self::build_cart_payload()]);
     }
 
     public static function cart_apply_coupon()
@@ -691,7 +691,7 @@ class ROP_Ajax
         WC()->cart->calculate_totals();
         WC()->cart->set_session();
 
-        wp_send_json_success(self::build_cart_payload());
+        wp_send_json_success(['cart' => self::build_cart_payload()]);
     }
 
     public static function cart_remove_coupon()
@@ -1290,6 +1290,9 @@ class ROP_Ajax
         $shipping_raw = (float) WC()->cart->get_shipping_total();
         $discount_raw = (float) WC()->cart->get_discount_total();
         $total_raw = method_exists(WC()->cart, 'get_total') ? (float) WC()->cart->get_total('edit') : (float) WC()->cart->total;
+        if ($total_raw <= 0 && isset(WC()->cart->total)) {
+            $total_raw = (float) WC()->cart->total;
+        }
 
         $threshold = self::get_free_shipping_threshold();
         $base_for_free_shipping = max(0, $subtotal_raw - $discount_raw);
